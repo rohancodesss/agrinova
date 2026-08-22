@@ -1,4 +1,4 @@
-// Prints A0..A5 raw every 500 ms. Jumper a pin to GND -> ~0, to 5V -> ~1023.
+// Prints A0..A5 raw every 500 ms.
 void setup() { Serial.begin(9600); }
 void loop() {
   Serial.print("A0="); Serial.print(analogRead(A0));

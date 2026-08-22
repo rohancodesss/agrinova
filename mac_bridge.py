@@ -1089,6 +1089,14 @@ def handle_command(text):
             send_telegram_message(f"✅ Air (dry) calibration = {raw}. Now put the probe in water and send /calibrate water.")
         elif arg in ("water", "wet"):
             with settings_lock:
+                air = settings["soil_raw_air"]
+            if air is not None and abs(air - raw) < 50:
+                send_telegram_message(
+                    f"❌ Water reading ({raw}) is the same as the air reading ({air}). "
+                    "The sensor is not responding to water — check the fork-to-board wires / VCC on 5V, or replace the module. "
+                    "Calibration NOT saved.")
+                return
+            with settings_lock:
                 settings["soil_raw_water"] = raw
             save_settings()
             send_telegram_message(f"✅ Water (wet) calibration = {raw}. Soil % now uses your calibration.")
