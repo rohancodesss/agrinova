@@ -74,7 +74,7 @@ HELP_TEXT = (
     "\n"
     "🔒 Security\n"
     "/lockdown  /unlock — arm / disarm IR alerts\n"
-    "/stop  /continue — mute / unmute all alerts\n"
+    "/mute  /unmute — silence / resume all alerts\n"
     "/photo — take a photo\n"
     "/video [sec] — record video (1-30)\n"
     "\n"
@@ -89,7 +89,8 @@ HELP_TEXT = (
     "⚙️ Other\n"
     "/rotate  /rotate_stop — servo\n"
     "/menu — button keyboard\n"
-    "/about — project info"
+    "/about — project info\n"
+    "/stop — shut the bridge down (asks 3 times)"
 )
 ABOUT_TEXT = (
     "AgriNova — IoT crop protection prototype. Signal path: "
@@ -102,7 +103,8 @@ ROTATE_STOP_TEXT = "⚙️ Servo OFF (A3 LOW)."
 MIST_ON_TEXT = "💨 Mist ON."
 MIST_OFF_TEXT = "💨 Mist OFF."
 ARDUINO_MISSING_TEXT = "Arduino is not connected — command not sent."
-STOP_TEXT = "Alerts muted. Send /continue to resume."
+STOP_TEXT = "🔕 Alerts muted. Send /unmute to resume."
+SHUTDOWN_CONFIRM_WINDOW = 60  # seconds to complete the 3-step /stop
 CONTINUE_TEXT = "Alerts resumed."
 LOCKDOWN_TEXT = "🔒 Lockdown ON — IR intruder alerts are now active."
 UNLOCK_TEXT = "🔓 Lockdown OFF — intruder alerts muted. Send /lockdown to arm again."
@@ -844,7 +846,51 @@ ALIASES = {
     "/automist on": "/auto_mist on", "/automist off": "/auto_mist off",
     "/soil raw": "/soil_raw", "/soilraw": "/soil_raw",
     "/start": "/help", "/keyboard": "/menu", "/buttons": "/menu",
+    "/continue": "/unmute", "/silence": "/mute", "/shutdown": "/stop",
+    "/stop yes": "/stop", "/stop confirm": "/stop",
 }
+
+shutdown_state = {"count": 0, "last": 0.0}
+shutdown_lock = threading.Lock()
+
+
+def handle_stop(text):
+    """Three-step confirmation before the bridge exits."""
+    with shutdown_lock:
+        now = time.time()
+        if now - shutdown_state["last"] > SHUTDOWN_CONFIRM_WINDOW:
+            shutdown_state["count"] = 0
+        if text == "/stop cancel":
+            shutdown_state["count"] = 0
+            send_telegram_message("✅ Shutdown cancelled. Bridge keeps running.")
+            return
+        shutdown_state["count"] += 1
+        shutdown_state["last"] = now
+        n = shutdown_state["count"]
+    kb = {"inline_keyboard": [[{"text": "🛑 YES, continue shutdown", "callback_data": "/stop"},
+                               {"text": "✅ Cancel", "callback_data": "/stop cancel"}]]}
+    if n == 1:
+        send_telegram_message(
+            "⚠️ This will STOP the AgriNova bridge.\n"
+            "No more intruder alerts, soil updates, mist control or camera until you restart it on the Mac.\n\n"
+            "Are you sure? (1/3) — send /stop again within 60 s, or /stop cancel.", reply_markup=kb)
+    elif n == 2:
+        send_telegram_message(
+            "⚠️⚠️ Are you REALLY sure? (2/3)\n"
+            "Lockdown, auto-mist and schedules will all go dark.\n"
+            "Send /stop one more time to shut down, or /stop cancel.", reply_markup=kb)
+    else:
+        send_telegram_message("🛑 Final confirmation received (3/3). Shutting the bridge down now.\n"
+                              "Restart it on the Mac with `agri`.")
+        log_event("BRIDGE_STOP", "telegram /stop x3")
+        try:
+            arduino_send("MIST_OFF")
+            arduino_send("STOP")
+        except Exception:
+            pass
+        print("[bridge] shutdown requested via Telegram (3x /stop)")
+        time.sleep(1)
+        os._exit(0)
 
 
 def normalise(text):
@@ -938,13 +984,15 @@ def handle_command(text):
             log_event("LOCKDOWN_OFF")
             send_telegram_message(UNLOCK_TEXT)
     elif cmd == "/stop":
+        handle_stop(text)
+    elif cmd == "/mute":
         if not settings["alerts"]:
             send_telegram_message("Alerts are already muted.")
         else:
             settings["alerts"] = False
             save_settings()
             send_telegram_message(STOP_TEXT)
-    elif cmd == "/continue":
+    elif cmd == "/unmute":
         if settings["alerts"]:
             send_telegram_message("Alerts are already on.")
         else:
