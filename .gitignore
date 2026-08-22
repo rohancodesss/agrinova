@@ -1,0 +1,7 @@
+agrinova_state.json
+agrinova_log.csv
+agrinova_events.csv
+bridge.log
+*.bak_*
+__pycache__/
+.DS_Store

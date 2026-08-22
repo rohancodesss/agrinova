@@ -1,0 +1,164 @@
+module top (
+    input  wire hw_clk,     // 12MHz onboard oscillator (pin 20)
+    output wire uarttx,     // UART TX to Mac (pin 14)
+    output wire led_red,
+    output wire led_green,
+    output wire led_blue,
+    input  wire ir_in,      // IR sensor DO (pin 38, active LOW on detection)
+    input  wire soil_in     // Soil sensor DO (pin 34, LOW = wet)
+);
+
+    localparam CLK_FREQ       = 12_000_000;
+    localparam BAUD_RATE      = 9600;
+    localparam CLKS_PER_BIT   = CLK_FREQ / BAUD_RATE;  // 1250
+
+    // ---------------------------------------------------------------
+    // Baud tick generator: one-cycle pulse every 1250 hw_clk cycles
+    // ---------------------------------------------------------------
+    reg [10:0] baud_count = 0;
+    reg        baud_tick  = 0;
+
+    always @(posedge hw_clk) begin
+        if (baud_count == CLKS_PER_BIT - 1) begin
+            baud_count <= 0;
+            baud_tick  <= 1'b1;
+        end else begin
+            baud_count <= baud_count + 1'b1;
+            baud_tick  <= 1'b0;
+        end
+    end
+
+    // ---------------------------------------------------------------
+    // IR sensor (pin 38): DO is LOW while something is detected.
+    // Sync input, then request an IR message on the clear->detect edge.
+    // Cooldown of 10s stops repeat alerts while the beam stays blocked.
+    // ---------------------------------------------------------------
+    localparam IR_COOLDOWN = CLK_FREQ * 10;  // 10 seconds
+
+    reg [1:0]  ir_sync = 2'b11;   // idle = HIGH (nothing detected)
+    reg [27:0] ir_cooldown = 0;
+    reg ir_req = 0;   // toggles once per detection
+
+    always @(posedge hw_clk) begin
+        ir_sync <= {ir_sync[0], ir_in};
+
+        if (ir_cooldown != 0)
+            ir_cooldown <= ir_cooldown - 1'b1;
+
+        // falling edge = detection started
+        if (ir_sync[1] == 1'b1 && ir_sync[0] == 1'b0 && ir_cooldown == 0) begin
+            ir_req <= ~ir_req;
+            ir_cooldown <= IR_COOLDOWN;
+        end
+    end
+
+    // ---------------------------------------------------------------
+    // Soil sensor (pin 34): DO is LOW when wet. Debounce 1 s, then
+    // request a SOIL message on every stable change (and once at boot).
+    // ---------------------------------------------------------------
+    localparam SOIL_DEBOUNCE = CLK_FREQ;  // 1 second
+
+    reg [1:0]  soil_sync = 2'b11;
+    reg        soil_stable = 1'b1;     // debounced level (1 = dry)
+    reg        soil_reported = 1'b1;   // level last sent
+    reg [23:0] soil_timer = 0;
+    reg        soil_booted = 0;
+    reg        soil_req = 0;
+
+    always @(posedge hw_clk) begin
+        soil_sync <= {soil_sync[0], soil_in};
+
+        if (soil_sync[1] != soil_stable) begin
+            if (soil_timer == SOIL_DEBOUNCE - 1) begin
+                soil_stable <= soil_sync[1];
+                soil_timer  <= 0;
+            end else begin
+                soil_timer <= soil_timer + 1'b1;
+            end
+        end else begin
+            soil_timer <= 0;
+        end
+
+        // boot: send the initial state once after the first debounce window
+        if (!soil_booted) begin
+            if (soil_timer == SOIL_DEBOUNCE - 1 || soil_sync[1] == soil_stable) begin
+                if (soil_timer == 0 && soil_sync[1] == soil_stable) begin
+                    soil_booted <= 1'b1;
+                    soil_req <= ~soil_req;
+                    soil_reported <= soil_stable;
+                end
+            end
+        end else if (soil_stable != soil_reported) begin
+            soil_reported <= soil_stable;
+            soil_req <= ~soil_req;
+        end
+    end
+
+    // ---------------------------------------------------------------
+    // Message ROM
+    //   IR\n        -> 0..2
+    //   SOIL:WET\n  -> 3..11
+    //   SOIL:DRY\n  -> 12..20
+    // ---------------------------------------------------------------
+    reg [7:0] message [0:20];
+    initial begin
+        message[0]  = "I"; message[1]  = "R"; message[2]  = "\n";
+        message[3]  = "S"; message[4]  = "O"; message[5]  = "I"; message[6]  = "L";
+        message[7]  = ":"; message[8]  = "W"; message[9]  = "E"; message[10] = "T"; message[11] = "\n";
+        message[12] = "S"; message[13] = "O"; message[14] = "I"; message[15] = "L";
+        message[16] = ":"; message[17] = "D"; message[18] = "R"; message[19] = "Y"; message[20] = "\n";
+    end
+
+    // ---------------------------------------------------------------
+    // Message sequencer
+    // ---------------------------------------------------------------
+    reg [4:0] msg_index = 0;
+    reg [4:0] msg_last  = 0;
+    reg       sending_msg = 0;
+    reg       byte_start  = 0;
+    reg       ir_ack      = 0;
+    reg       soil_ack    = 0;
+    wire      byte_busy;
+
+    always @(posedge hw_clk) begin
+        byte_start <= 1'b0;
+
+        if (!sending_msg) begin
+            if (ir_req != ir_ack) begin
+                ir_ack      <= ir_req;
+                sending_msg <= 1'b1;
+                msg_index   <= 5'd0;
+                msg_last    <= 5'd2;
+                byte_start  <= 1'b1;
+            end else if (soil_req != soil_ack) begin
+                soil_ack    <= soil_req;
+                sending_msg <= 1'b1;
+                msg_index   <= soil_stable ? 5'd12 : 5'd3;   // 1 = dry, 0 = wet
+                msg_last    <= soil_stable ? 5'd20 : 5'd11;
+                byte_start  <= 1'b1;
+            end
+        end else if (!byte_busy && !byte_start) begin
+            if (msg_index == msg_last) begin
+                sending_msg <= 1'b0;
+            end else begin
+                msg_index  <= msg_index + 1'b1;
+                byte_start <= 1'b1;
+            end
+        end
+    end
+
+    uart_tx_byte u_tx (
+        .clk   (hw_clk),
+        .tick  (baud_tick),
+        .data  (message[msg_index]),
+        .start (byte_start),
+        .tx    (uarttx),
+        .busy  (byte_busy)
+    );
+
+    // LEDs: green while transmitting, blue while IR sensor is detecting
+    assign led_red   = 1'b0;  // disabled to prevent burnout
+    assign led_green = sending_msg;
+    assign led_blue  = ~ir_sync[1];
+
+endmodule
