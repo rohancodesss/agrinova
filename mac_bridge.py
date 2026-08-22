@@ -58,6 +58,9 @@ AUTO_MIST_DRY_MINUTES = 5          # soil must be DRY this long before auto-spra
 AUTO_MIST_MAX_PER_HOUR = 4
 CAMERA_OFFLINE_AFTER = 60          # seconds without a poll from the VM
 DAILY_SUMMARY_TIME = "20:00"
+WEATHER_CACHE_SECONDS = 15 * 60
+RAIN_SKIP_CHANCE = 60              # % chance of rain (next few hours) that cancels a spray
+RAIN_SKIP_HOURS = 6
 HISTORY_HOURS = 24
 
 DEFAULT_REPLY_TEXT = "Unknown command. Send /help for the list."
@@ -85,6 +88,9 @@ HELP_TEXT = (
     "/schedule HH:MM [sec] — daily spray\n"
     "/schedule list  /schedule clear\n"
     "/calibrate air|water — set soil calibration\n"
+    "/weather — forecast (wttr.in)\n"
+    "/weather set <city> — set location\n"
+    "/rain_skip on|off — skip sprays if rain likely\n"
     "\n"
     "⚙️ Other\n"
     "/rotate  /rotate_stop — servo\n"
@@ -135,6 +141,8 @@ settings = {
     "schedules": [],            # [{"time": "07:00", "secs": 10}]
     "soil_raw_air": None,       # calibration: raw value in air (dry)
     "soil_raw_water": None,     # calibration: raw value in water (wet)
+    "location": "",             # wttr.in location, e.g. "Hyderabad" (empty = geo-IP guess)
+    "rain_skip": True,          # skip scheduled/auto sprays when rain is likely
 }
 settings_lock = threading.Lock()
 
@@ -632,6 +640,91 @@ def listen_arduino(port):
 
 
 # --------------------------------------------------------------------------
+# Weather via wttr.in (no API key)
+# --------------------------------------------------------------------------
+weather_cache = {"time": 0.0, "data": None, "location": None}
+weather_lock = threading.Lock()
+
+
+def fetch_weather(force=False):
+    """Return wttr.in j1 JSON (cached 15 min) or None."""
+    with settings_lock:
+        loc = settings["location"]
+    with weather_lock:
+        if (not force and weather_cache["data"] and weather_cache["location"] == loc
+                and time.time() - weather_cache["time"] < WEATHER_CACHE_SECONDS):
+            return weather_cache["data"]
+    url = f"https://wttr.in/{urllib.parse.quote(loc)}?format=j1"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "curl/8.0 AgriNova"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read())
+        with weather_lock:
+            weather_cache.update({"time": time.time(), "data": data, "location": loc})
+        return data
+    except Exception as e:
+        print(f"[weather] fetch failed: {e}", file=sys.stderr)
+        return None
+
+
+def rain_outlook(data):
+    """(max % chance of rain over the next RAIN_SKIP_HOURS, total mm) from wttr.in j1."""
+    try:
+        hour_now = time.localtime().tm_hour
+        chances, mm = [], 0.0
+        for day_idx, day in enumerate(data["weather"][:2]):
+            for h in day["hourly"]:
+                t = int(h["time"]) // 100 + 24 * day_idx
+                if hour_now <= t < hour_now + RAIN_SKIP_HOURS:
+                    chances.append(int(h.get("chanceofrain", 0)))
+                    mm += float(h.get("precipMM", 0))
+        return (max(chances) if chances else 0), mm
+    except Exception:
+        return 0, 0.0
+
+
+def rain_expected():
+    """True if a spray should be skipped because rain is likely soon."""
+    if not settings["rain_skip"]:
+        return False, ""
+    data = fetch_weather()
+    if not data:
+        return False, ""
+    chance, mm = rain_outlook(data)
+    if chance >= RAIN_SKIP_CHANCE:
+        return True, f"{chance}% chance of rain in the next {RAIN_SKIP_HOURS} h ({mm:.1f} mm)"
+    return False, ""
+
+
+def build_weather():
+    data = fetch_weather()
+    if not data:
+        return "🌦 Weather unavailable (wttr.in not reachable)."
+    try:
+        c = data["current_condition"][0]
+        area = data["nearest_area"][0]
+        place = f"{area['areaName'][0]['value']}, {area['region'][0]['value']}"
+        chance, mm = rain_outlook(data)
+        lines = [f"🌦 Weather — {place}",
+                 f"{c['weatherDesc'][0]['value']}, {c['temp_C']}°C (feels {c['FeelsLikeC']}°C)",
+                 f"💧 Humidity {c['humidity']}%  🌬 Wind {c['windspeedKmph']} km/h  ☔ Precip {c['precipMM']} mm",
+                 f"🌧 Rain next {RAIN_SKIP_HOURS} h: {chance}% ({mm:.1f} mm)"
+                 + ("  → sprays will be SKIPPED" if settings["rain_skip"] and chance >= RAIN_SKIP_CHANCE else ""),
+                 ""]
+        for day in data["weather"][:3]:
+            rain = max(int(h.get("chanceofrain", 0)) for h in day["hourly"])
+            lines.append(f"📅 {day['date']}: {day['mintempC']}–{day['maxtempC']}°C, rain {rain}%, {day['totalSnow_cm']}cm snow"
+                         .replace(", 0.0cm snow", ""))
+        with settings_lock:
+            loc = settings["location"]
+        if not loc:
+            lines.append("\nℹ️ Location is auto-guessed. Set it: /weather set Hyderabad")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"🌦 Could not parse weather: {e}"
+
+
+# --------------------------------------------------------------------------
 # Automation: auto-irrigation + schedules + daily summary
 # --------------------------------------------------------------------------
 def auto_mist_loop():
@@ -652,9 +745,14 @@ def auto_mist_loop():
             continue
         if mist_burst_busy.locked():
             continue
+        skip, why = rain_expected()
         with state_lock:
             state["auto_mist_times"].append(time.time())
             state["dry_since"] = time.time()  # restart the dry timer after a spray
+        if skip:
+            send_telegram_message(f"🌧 Auto-irrigation skipped — {why}.")
+            log_event("AUTO_MIST_SKIPPED_RAIN", why)
+            continue
         send_telegram_message(f"🤖 Auto-irrigation: soil dry for {AUTO_MIST_DRY_MINUTES} min → spraying {MIST_BURST_SECONDS}s "
                               f"({len(recent) + 1}/{AUTO_MIST_MAX_PER_HOUR} this hour)")
         threading.Thread(target=mist_burst, args=(MIST_BURST_SECONDS, "auto"), daemon=True).start()
@@ -672,6 +770,11 @@ def scheduler_loop():
             key = (today, s["time"])
             if s["time"] == hhmm and key not in fired:
                 fired.add(key)
+                skip, why = rain_expected()
+                if skip:
+                    send_telegram_message(f"🌧 Scheduled spray {s['time']} skipped — {why}.")
+                    log_event("SCHEDULE_SKIPPED_RAIN", why)
+                    continue
                 send_telegram_message(f"⏰ Scheduled spray {s['time']} → {s['secs']}s")
                 threading.Thread(target=mist_burst, args=(s["secs"], "scheduled"), daemon=True).start()
         if DAILY_SUMMARY_TIME == hhmm and (today, "summary") not in fired:
@@ -701,6 +804,10 @@ def build_summary():
     lines.append(f"🚨 Intruder events today: {len(intr)}")
     lines.append(f"💨 Mist runtime today: {fmt_duration(mist_rt)}")
     lines.append(f"🔒 Lockdown: {'ON' if settings['lockdown'] else 'OFF'} | 🤖 Auto-mist: {'ON' if settings['auto_mist'] else 'OFF'}")
+    data = fetch_weather()
+    if data:
+        chance, mm = rain_outlook(data)
+        lines.append(f"🌦 Outside: {data['current_condition'][0]['temp_C']}°C, rain next {RAIN_SKIP_HOURS} h {chance}%")
     return "\n".join(lines)
 
 
@@ -731,7 +838,8 @@ def build_status():
               f"💨 Mist: {'ON' if s['mist_on'] else 'OFF'}   ⚙️ Servo: {'ON' if s['servo_on'] else 'OFF'}",
               f"🔒 Lockdown: {'ON' if settings['lockdown'] else 'OFF'}   🔔 Alerts: {'ON' if settings['alerts'] else 'MUTED'}",
               f"🤖 Auto-mist: {'ON' if settings['auto_mist'] else 'OFF'}   ⏰ Schedules: {len(settings['schedules'])}",
-              f"🚨 Intruders today: {intr}"]
+              f"🚨 Intruders today: {intr}",
+              f"🌧 Rain-skip: {'ON' if settings['rain_skip'] else 'OFF'}"]
     if not calibrated():
         lines.append("ℹ️ Soil not calibrated — /calibrate air then /calibrate water")
     return "\n".join(lines)
@@ -834,7 +942,8 @@ MENU_KEYBOARD = {"inline_keyboard": [
     [{"text": "📷 Photo", "callback_data": "/photo"},
      {"text": "🎥 Video 5s", "callback_data": "/video"}],
     [{"text": "🤖 Auto-mist ON", "callback_data": "/auto_mist on"},
-     {"text": "🤖 Auto-mist OFF", "callback_data": "/auto_mist off"}],
+     {"text": "🤖 Auto-mist OFF", "callback_data": "/auto_mist off"},
+     {"text": "🌦 Weather", "callback_data": "/weather"}],
 ]}
 
 ALIASES = {
@@ -845,6 +954,9 @@ ALIASES = {
     "/auto mist on": "/auto_mist on", "/auto mist off": "/auto_mist off",
     "/automist on": "/auto_mist on", "/automist off": "/auto_mist off",
     "/soil raw": "/soil_raw", "/soilraw": "/soil_raw",
+    "/rain skip on": "/rain_skip on", "/rain skip off": "/rain_skip off",
+    "/rainskip on": "/rain_skip on", "/rainskip off": "/rain_skip off",
+    "/forecast": "/weather",
     "/start": "/help", "/keyboard": "/menu", "/buttons": "/menu",
     "/continue": "/unmute", "/silence": "/mute", "/shutdown": "/stop",
     "/stop yes": "/stop", "/stop confirm": "/stop",
@@ -967,6 +1079,23 @@ def handle_command(text):
             send_telegram_message(f"✅ Water (wet) calibration = {raw}. Soil % now uses your calibration.")
         else:
             send_telegram_message("Usage: /calibrate air | water | reset")
+    elif cmd == "/weather":
+        if arg == "set":
+            loc = " ".join(parts[2:])
+            with settings_lock:
+                settings["location"] = loc
+            save_settings()
+            send_telegram_message(f"📍 Location set to {loc or 'auto (geo-IP)'}. Fetching...")
+            send_telegram_message(build_weather())
+        else:
+            send_telegram_message(build_weather())
+    elif cmd == "/rain_skip":
+        if arg in ("on", "off"):
+            settings["rain_skip"] = arg == "on"
+            save_settings()
+            send_telegram_message(f"🌧 Rain-skip {'ON — sprays are skipped when rain chance ≥ ' + str(RAIN_SKIP_CHANCE) + '%' if arg == 'on' else 'OFF'}.")
+        else:
+            send_telegram_message(f"🌧 Rain-skip is {'ON' if settings['rain_skip'] else 'OFF'}. Usage: /rain_skip on|off")
     elif cmd == "/lockdown":
         if settings["lockdown"]:
             send_telegram_message("🔒 Already locked down.")
