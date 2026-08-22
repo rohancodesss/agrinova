@@ -33,7 +33,7 @@ float temperature = 0;
 float humidity = 0;
 bool wet = false;
 unsigned long last_reading = 0;
-const unsigned long READING_INTERVAL = 5000;
+const unsigned long READING_INTERVAL = 1000;
 
 void set_mist(bool on) {
   mist_active = on;

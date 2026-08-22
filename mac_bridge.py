@@ -478,16 +478,30 @@ def set_mist_state(on):
 mist_burst_busy = threading.Lock()
 
 
-def mist_burst(seconds, reason=""):
+AUTO_MIST_MAX_SECONDS = 30  # safety cap for a single auto burst
+
+
+def mist_burst(seconds, reason="", stop_when_wet=False):
+    """Run the mist for up to `seconds`. With stop_when_wet, cut it the moment
+    the soil reads WET (checked every 0.2 s)."""
     if not mist_burst_busy.acquire(blocking=False):
         return
     try:
         if arduino_send("MIST_ON"):
             set_mist_state(True)
             log_event("MIST_BURST", f"{seconds}s {reason}".strip())
-            time.sleep(seconds)
+            t0 = time.time()
+            stopped_wet = False
+            while time.time() - t0 < seconds:
+                time.sleep(0.2)
+                if stop_when_wet and state["wet"]:
+                    stopped_wet = True
+                    break
             arduino_send("MIST_OFF")
             set_mist_state(False)
+            if stopped_wet:
+                send_telegram_message(f"💧 Soil is WET — mist stopped after {time.time() - t0:.1f}s.")
+                log_event("MIST_STOPPED_WET", f"{time.time() - t0:.1f}s")
     finally:
         mist_burst_busy.release()
 
@@ -753,9 +767,9 @@ def auto_mist_loop():
             send_telegram_message(f"🌧 Auto-irrigation skipped — {why}.")
             log_event("AUTO_MIST_SKIPPED_RAIN", why)
             continue
-        send_telegram_message(f"🤖 Auto-irrigation: soil DRY → spraying {MIST_BURST_SECONDS}s "
+        send_telegram_message(f"🤖 Auto-irrigation: soil DRY → misting until WET (max {AUTO_MIST_MAX_SECONDS}s) "
                               f"({len(recent) + 1}/{AUTO_MIST_MAX_PER_HOUR} this hour)")
-        threading.Thread(target=mist_burst, args=(MIST_BURST_SECONDS, "auto"), daemon=True).start()
+        threading.Thread(target=mist_burst, args=(AUTO_MIST_MAX_SECONDS, "auto", True), daemon=True).start()
 
 
 def scheduler_loop():
@@ -1216,7 +1230,7 @@ def handle_command(text):
                 log_event("AUTO_MIST", arg)
                 send_telegram_message(
                     f"🤖 Auto-mist {'ON' if want else 'OFF'}"
-                    + (f" — sprays {MIST_BURST_SECONDS}s whenever soil reads DRY (<40%), max {AUTO_MIST_MAX_PER_HOUR}/h." if want else "."))
+                    + (f" — mists whenever soil reads DRY (<40%) until it reads WET (max {AUTO_MIST_MAX_SECONDS}s), max {AUTO_MIST_MAX_PER_HOUR}/h." if want else "."))
         else:
             send_telegram_message(f"🤖 Auto-mist is {'ON' if settings['auto_mist'] else 'OFF'}. Usage: /auto_mist on|off")
     elif cmd == "/schedule":
