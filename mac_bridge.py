@@ -478,7 +478,8 @@ def set_mist_state(on):
 mist_burst_busy = threading.Lock()
 
 
-AUTO_MIST_MAX_SECONDS = 30  # safety cap for a single auto burst
+AUTO_MIST_STOP_PCT = 30            # auto-mist stops once soil reads this % or less
+AUTO_MIST_MAX_SECONDS = 600        # hard safety cap (10 min) so a dead sensor cannot run the mist forever
 
 
 def mist_burst(seconds, reason="", stop_when_wet=False):
@@ -494,13 +495,13 @@ def mist_burst(seconds, reason="", stop_when_wet=False):
             stopped_wet = False
             while time.time() - t0 < seconds:
                 time.sleep(0.2)
-                if stop_when_wet and state["wet"]:
+                if stop_when_wet and state["moisture"] is not None and state["moisture"] <= AUTO_MIST_STOP_PCT:
                     stopped_wet = True
                     break
             arduino_send("MIST_OFF")
             set_mist_state(False)
             if stopped_wet:
-                send_telegram_message(f"💧 Soil is WET — mist stopped after {time.time() - t0:.1f}s.")
+                send_telegram_message(f"💧 Soil reached {state['moisture']}% (≤{AUTO_MIST_STOP_PCT}%) — mist stopped after {time.time() - t0:.1f}s.")
                 log_event("MIST_STOPPED_WET", f"{time.time() - t0:.1f}s")
     finally:
         mist_burst_busy.release()
@@ -747,14 +748,14 @@ def auto_mist_loop():
         if not settings["auto_mist"]:
             continue
         with state_lock:
-            dry_since = state["dry_since"]
+            moisture = state["moisture"]
             mist_on = state["mist_on"]
             recent = [t for t in state["auto_mist_times"] if time.time() - t < 3600]
             fresh = time.time() - state["last_reading"] < 60
-        if not fresh or mist_on or dry_since is None:
+        if not fresh or mist_on or moisture is None:
             continue
-        if time.time() - dry_since < AUTO_MIST_DRY_SECONDS:
-            continue
+        if moisture <= AUTO_MIST_STOP_PCT:
+            continue  # already at/below target — nothing to do
         if len(recent) >= AUTO_MIST_MAX_PER_HOUR:
             continue
         if mist_burst_busy.locked():
@@ -767,7 +768,7 @@ def auto_mist_loop():
             send_telegram_message(f"🌧 Auto-irrigation skipped — {why}.")
             log_event("AUTO_MIST_SKIPPED_RAIN", why)
             continue
-        send_telegram_message(f"🤖 Auto-irrigation: soil DRY → misting until WET (max {AUTO_MIST_MAX_SECONDS}s) "
+        send_telegram_message(f"🤖 Auto-irrigation: soil {moisture}% → misting until it reads ≤{AUTO_MIST_STOP_PCT}% "
                               f"({len(recent) + 1}/{AUTO_MIST_MAX_PER_HOUR} this hour)")
         threading.Thread(target=mist_burst, args=(AUTO_MIST_MAX_SECONDS, "auto", True), daemon=True).start()
 
@@ -1230,7 +1231,7 @@ def handle_command(text):
                 log_event("AUTO_MIST", arg)
                 send_telegram_message(
                     f"🤖 Auto-mist {'ON' if want else 'OFF'}"
-                    + (f" — mists whenever soil reads DRY (<40%) until it reads WET (max {AUTO_MIST_MAX_SECONDS}s), max {AUTO_MIST_MAX_PER_HOUR}/h." if want else "."))
+                    + (f" — mists whenever soil is above {AUTO_MIST_STOP_PCT}% and stops once it reads ≤{AUTO_MIST_STOP_PCT}%, max {AUTO_MIST_MAX_PER_HOUR}/h." if want else "."))
         else:
             send_telegram_message(f"🤖 Auto-mist is {'ON' if settings['auto_mist'] else 'OFF'}. Usage: /auto_mist on|off")
     elif cmd == "/schedule":
