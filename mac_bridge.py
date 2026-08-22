@@ -54,7 +54,7 @@ TEMP_HIGH_C = 35.0
 HUMIDITY_LOW_PCT = 30.0
 MIST_BURST_SECONDS = 10            # intruder / auto-irrigation burst
 INTRUDER_VIDEO_SECONDS = 5
-AUTO_MIST_DRY_MINUTES = 5          # soil must be DRY this long before auto-spray
+AUTO_MIST_DRY_SECONDS = 0          # spray as soon as soil reads DRY (0 = immediately)
 AUTO_MIST_MAX_PER_HOUR = 4
 CAMERA_OFFLINE_AFTER = 60          # seconds without a poll from the VM
 DAILY_SUMMARY_TIME = "20:00"
@@ -729,7 +729,7 @@ def build_weather():
 # --------------------------------------------------------------------------
 def auto_mist_loop():
     while True:
-        time.sleep(15)
+        time.sleep(5)
         if not settings["auto_mist"]:
             continue
         with state_lock:
@@ -739,7 +739,7 @@ def auto_mist_loop():
             fresh = time.time() - state["last_reading"] < 60
         if not fresh or mist_on or dry_since is None:
             continue
-        if time.time() - dry_since < AUTO_MIST_DRY_MINUTES * 60:
+        if time.time() - dry_since < AUTO_MIST_DRY_SECONDS:
             continue
         if len(recent) >= AUTO_MIST_MAX_PER_HOUR:
             continue
@@ -753,7 +753,7 @@ def auto_mist_loop():
             send_telegram_message(f"🌧 Auto-irrigation skipped — {why}.")
             log_event("AUTO_MIST_SKIPPED_RAIN", why)
             continue
-        send_telegram_message(f"🤖 Auto-irrigation: soil dry for {AUTO_MIST_DRY_MINUTES} min → spraying {MIST_BURST_SECONDS}s "
+        send_telegram_message(f"🤖 Auto-irrigation: soil DRY → spraying {MIST_BURST_SECONDS}s "
                               f"({len(recent) + 1}/{AUTO_MIST_MAX_PER_HOUR} this hour)")
         threading.Thread(target=mist_burst, args=(MIST_BURST_SECONDS, "auto"), daemon=True).start()
 
@@ -1216,7 +1216,7 @@ def handle_command(text):
                 log_event("AUTO_MIST", arg)
                 send_telegram_message(
                     f"🤖 Auto-mist {'ON' if want else 'OFF'}"
-                    + (f" — sprays {MIST_BURST_SECONDS}s after {AUTO_MIST_DRY_MINUTES} min DRY, max {AUTO_MIST_MAX_PER_HOUR}/h." if want else "."))
+                    + (f" — sprays {MIST_BURST_SECONDS}s whenever soil reads DRY (<40%), max {AUTO_MIST_MAX_PER_HOUR}/h." if want else "."))
         else:
             send_telegram_message(f"🤖 Auto-mist is {'ON' if settings['auto_mist'] else 'OFF'}. Usage: /auto_mist on|off")
     elif cmd == "/schedule":

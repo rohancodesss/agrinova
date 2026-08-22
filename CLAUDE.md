@@ -64,7 +64,7 @@ Windows VM (UTM, 192.168.64.3) camera_service.py ──polls──► Mac 192.16
 - Only `ALLOWED_CHAT_IDS` may command the bot; others are logged and ignored.
 - `settings["lockdown"]` gates IR alerts. On `IR` while locked down: alert → `intruder_response` (photo first, then 5 s video) + 10 s `mist_burst`. Every IR is counted in `state["intruder_events"]` regardless.
 - Weather: `fetch_weather()` hits `https://wttr.in/<location>?format=j1` (no key, 15 min cache). `rain_expected()` → skip scheduled/auto sprays when chance ≥ 60 % in next 6 h (`settings["rain_skip"]`, default on). `/weather`, `/weather set <city>`, `/rain_skip on|off`. Location persisted in `settings["location"]`.
-- Auto-irrigation: when `auto_mist` is on and soil has been DRY ≥ 5 min (`AUTO_MIST_DRY_MINUTES`), burst 10 s, max 4/h. Schedules fire daily via `scheduler_loop`; daily summary at `DAILY_SUMMARY_TIME` (20:00).
+- Auto-irrigation: when `auto_mist` is on and soil reads DRY (<40 %) → immediate 10 s burst (`AUTO_MIST_DRY_SECONDS = 0`), max 4/h. Schedules fire daily via `scheduler_loop`; daily summary at `DAILY_SUMMARY_TIME` (20:00).
 - Alerts: soil every 10 min + on WET/DRY change; climate warning (≥35 °C or ≤30 % RH) every 30 min; FPGA/Arduino/camera disconnect + reconnect; bridge-online on start; camera-removal CRITICAL.
 - Logging: every reading → `agrinova_log.csv`; events → `agrinova_events.csv`. `/graph` renders the in-memory 24 h history with matplotlib (installed `--user` for /usr/bin/python3).
 - Camera relay: `request_capture(kind, duration, timeout)`; Windows POSTs bytes back; header `X-Camera-Status: removed` → CRITICAL alert. `camera_online()` = polled within 60 s.
