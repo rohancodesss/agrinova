@@ -40,7 +40,7 @@ a{color:var(--green);text-decoration:none}a:hover{text-decoration:underline}
 .btn.pri{background:#fff;color:var(--green-d)}
 .btn.sec{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.35)}
 /* ---------- stats strip ---------- */
-.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1rem;margin:-2.6rem auto 0;max-width:900px;padding:0 1.2rem;position:relative;z-index:2}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin:-2.6rem auto 0;max-width:900px;padding:0 1.2rem;position:relative;z-index:2}
 .stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:1.1rem;text-align:center;box-shadow:0 10px 30px rgba(13,40,24,.12)}
 .stat b{display:block;font-size:1.7rem;color:var(--green-d);font-family:var(--mono)}
 .stat span{font-size:.82rem;color:var(--mut)}
@@ -102,7 +102,7 @@ footer a{color:#8be9b7}
 .trow{display:flex;align-items:center;background:#0f1a10;border-top:1px solid #163a1f;padding:.5em .8em;font:12.5px var(--mono)}
 .trow .p{color:#ffcc4d;margin-right:.5em;white-space:nowrap}
 #cmd{flex:1;background:transparent;border:none;outline:none;color:#e8ffe8;font:inherit;caret-color:#33ff66}
-@media(max-width:600px){.stats{margin-top:-1.8rem}}
+@media(max-width:700px){.stats{grid-template-columns:repeat(2,1fr);margin-top:-1.8rem}}
 </style>
 </head>
 <body>
@@ -127,6 +127,8 @@ footer a{color:#8be9b7}
   <div class="stat rv"><b>µs</b><span>hardware detection speed</span></div>
   <div class="stat rv"><b data-count="24" data-post="/7">0</b><span>watching, even if software crashes</span></div>
   <div class="stat rv"><b data-count="3">0</b><span>languages — English · తెలుగు · Telugu</span></div>
+  <div class="stat rv"><b data-count="10" data-post=" s">0</b><span>hardware cooldown, burned into logic</span></div>
+  <div class="stat rv"><b data-count="0" data-pre="₹">₹0</b><span>per month — no app, no subscription</span></div>
 </div>
 
 <main class="wrap">
