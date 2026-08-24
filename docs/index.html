@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgriNova — FPGA + Arduino Smart Farm Guard & Irrigation on Telegram</title>
+<meta name="description" content="AgriNova: open-source smart crop protection and irrigation for small farmers. FPGA intruder detection with photo/video alerts, weather-aware auto-irrigation, Telugu support — all controlled from Telegram. Total cost ~₹2500.">
+<meta name="keywords" content="smart agriculture, FPGA, Arduino, Telegram bot, IoT farming, irrigation automation, crop protection, iCE40, VSDSquadron, soil moisture, India, INSPIRE MANAK">
+<link rel="canonical" href="https://rohancodesss.github.io/agrinova/">
+<meta property="og:title" content="AgriNova — A farm that texts you back">
+<meta property="og:description" content="FPGA + Arduino smart crop protection & irrigation, controlled from Telegram. ~₹2500 in parts.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://rohancodesss.github.io/agrinova/">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareSourceCode","name":"AgriNova",
+"description":"Open-source FPGA + Arduino smart crop protection and irrigation system controlled from Telegram.",
+"codeRepository":"https://github.com/rohancodesss/agrinova",
+"programmingLanguage":["Python","Verilog","C++"],
+"author":{"@type":"Person","name":"rohancodesss"},"license":"https://opensource.org/licenses/MIT"}
+</script>
+<style>
+body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:760px;margin:0 auto;padding:2rem 1.2rem;line-height:1.6;color:#1b2b1b;background:#fbfdf9}
+h1{color:#2E8B57}a{color:#2E8B57}code{background:#eef4ea;padding:.15em .4em;border-radius:4px}
+.btn{display:inline-block;background:#2E8B57;color:#fff;padding:.6em 1.2em;border-radius:8px;text-decoration:none;font-weight:600;margin:.3em .3em .3em 0}
+ul{padding-left:1.2em}
+</style>
+</head>
+<body>
+<h1>🌿 AgriNova — a farm that texts you back</h1>
+<p><strong>Open-source smart crop protection and irrigation for small farmers</strong>, built with an iCE40 FPGA, an Arduino UNO and a Telegram bot. Total parts cost about <strong>₹2,500</strong>.</p>
+<p>
+<a class="btn" href="https://github.com/rohancodesss/agrinova">View on GitHub</a>
+<a class="btn" href="https://github.com/rohancodesss/agrinova/releases">Download binaries</a>
+</p>
+<h2>What it does</h2>
+<ul>
+<li>🔒 <strong>Intruder detection in hardware</strong> — an IR sensor wired to FPGA logic reacts in microseconds; your phone gets an alert, a photo (~2 s) and a video, and a mist burst deters the animal.</li>
+<li>💧 <strong>Closed-loop irrigation</strong> — sprays when the soil is dry, stops the moment the target moisture is reached.</li>
+<li>🌧 <strong>Weather-aware</strong> — checks the forecast (wttr.in) and skips watering when rain is coming.</li>
+<li>🚨 <strong>Tamper alarm</strong> — a CRITICAL alert if the camera is forcefully removed mid-recording.</li>
+<li>📊 <strong>Data</strong> — every reading logged; 24-hour graphs and daily summaries in chat.</li>
+<li>🌐 <strong>Telugu support</strong> — alerts in తెలుగు or Telugu in English letters, chosen with /lang.</li>
+</ul>
+<h2>Why an FPGA?</h2>
+<p>The safety-critical detection path is pure hardware: synchroniser → edge detector → hardware cooldown → UART. It cannot crash, needs no OS, and keeps watching even if every computer in the system goes down.</p>
+<p>Everything — Verilog, Arduino sketch, Python bridge, camera service, wiring diagrams, presentation — is MIT-licensed on <a href="https://github.com/rohancodesss/agrinova">GitHub</a>.</p>
+</body>
+</html>

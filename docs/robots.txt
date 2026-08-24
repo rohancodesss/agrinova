@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://rohancodesss.github.io/agrinova/sitemap.xml
