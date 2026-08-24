@@ -5,3 +5,4 @@ bridge.log
 *.bak_*
 __pycache__/
 .DS_Store
+build_fw/

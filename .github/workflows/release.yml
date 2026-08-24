@@ -1,0 +1,58 @@
+name: Release builds
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-camera:
+    name: Windows camera service (x64 EXE)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pyinstaller requests opencv-python
+      - run: pyinstaller --onefile --name AgriNova-CameraService-windows-x64 windows/camera_service.py
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/AgriNova-CameraService-windows-x64.exe
+
+  macos-bridge:
+    name: macOS bridge (${{ matrix.label }})
+    strategy:
+      matrix:
+        include:
+          - { os: macos-14, label: apple-silicon, arch: arm64 }
+          - { os: macos-13, label: intel, arch: x86_64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install pyinstaller pyserial matplotlib
+      - run: pyinstaller --onefile --name AgriNova-Bridge-macos-${{ matrix.label }} mac_bridge.py
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/AgriNova-Bridge-macos-${{ matrix.label }}
+
+  firmware:
+    name: Firmware (FPGA bitstream + Arduino hex)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - run: |
+          arduino-cli core update-index && arduino-cli core install arduino:avr
+          arduino-cli lib install "DHT sensor library"
+          arduino-cli compile --fqbn arduino:avr:uno --output-dir fw agrinova_soil_sensor
+          cp top.bin fw/AgriNova-FPGA-iCE40UP5K.bin
+          cp fw/agrinova_soil_sensor.ino.hex fw/AgriNova-Arduino-UNO.hex
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            fw/AgriNova-FPGA-iCE40UP5K.bin
+            fw/AgriNova-Arduino-UNO.hex
