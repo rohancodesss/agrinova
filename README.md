@@ -18,6 +18,35 @@
 
 ---
 
+> **Choose how you want to read this:**
+
+<details open>
+<summary><h3>🧑‍🌾 &nbsp;SIMPLE — explain it like I'm not an engineer</h3></summary>
+
+## 🧑‍🌾 What is this, in plain words?
+
+AgriNova is a **guard and a gardener for a small farm**, that talks to you on **Telegram** — the normal chat app.
+
+**What it does for you:**
+
+- 👀 **It watches your field.** If an animal or a person walks in, your phone gets a message: *"🚨 Someone is in your farm!"* — with a **photo and a video**, in seconds. It even sprays water to scare the animal away.
+- 💧 **It waters your plants for you.** A small sensor sits in the soil. When the soil gets dry, the mist switches on. The moment the soil is wet enough, it switches off. Not one drop wasted.
+- 🌧 **It checks the sky first.** Before watering, it looks at the weather forecast. Rain coming? It skips the watering and tells you.
+- 🌡 **It tells you how the field is doing.** Send `/status` and you get the soil, temperature and humidity right now. Send `/graph` and you get a picture of the whole day.
+- 🗣 **It speaks your language.** Send `/lang` and choose English, తెలుగు, or Telugu written in English letters.
+- 🔘 **No typing needed.** Send `/menu` and you get buttons to press.
+
+**What you need:** the small electronics kit (about **₹2,500** in parts), a computer at home, and Telegram on your phone. That's all — no monthly fee, no special app, no internet plan for the field.
+
+**Why it's trustworthy:** the part that watches for intruders is built in *hardware* — a chip that does only that one job. Even if the computer hangs or crashes, the watching never stops, and everything reconnects by itself. If someone pulls out the camera, you get an emergency message with the video up to that moment.
+
+*Want the engineering details? Open the Technical section below.* 🔬
+
+</details>
+
+<details>
+<summary><h3>🔬 &nbsp;TECHNICAL — architecture, commands, build guide</h3></summary>
+
 ## 🚜 What is AgriNova?
 
 AgriNova turns a small farm plot into something that **watches, waters, and reports back** — all through the Telegram app the farmer already has. No dashboard, no subscription, no custom app.
@@ -183,6 +212,8 @@ Issues and PRs welcome — this is a student project built to be reproduced. Goo
 ## 📄 License
 
 [MIT](LICENSE) — do anything, just keep the notice.
+
+</details>
 
 ---
 
