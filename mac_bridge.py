@@ -93,6 +93,7 @@ HELP_TEXT = (
     "/rain_skip on|off — skip sprays if rain likely\n"
     "\n"
     "⚙️ Other\n"
+    "/lang — language: English / తెలుగు / Telugu (English)\n"
     "/rotate  /rotate_stop — servo\n"
     "/menu — button keyboard\n"
     "/about — project info\n"
@@ -143,7 +144,102 @@ settings = {
     "soil_raw_water": None,     # calibration: raw value in water (wet)
     "location": "",             # wttr.in location, e.g. "Hyderabad" (empty = geo-IP guess)
     "rain_skip": True,          # skip scheduled/auto sprays when rain is likely
+    "lang": "en",               # en | te (Telugu) | te_en (Telugu in English script)
 }
+
+# ---------------------------------------------------------------------------
+# Languages: en = English, te = Telugu, te_en = Telugu in English letters
+# ---------------------------------------------------------------------------
+MSGS = {
+    "intruder": {
+        "en": "🚨 Someone is in your farm! {t}",
+        "te": "🚨 మీ పొలంలో ఎవరో ఉన్నారు! {t}",
+        "te_en": "🚨 Mee polam lo evaro unnaru! {t}",
+    },
+    "lockdown_on": {
+        "en": "🔒 Lockdown ON — IR intruder alerts are now active.",
+        "te": "🔒 లాక్‌డౌన్ ఆన్ — దొంగల హెచ్చరికలు ఇప్పుడు యాక్టివ్‌గా ఉన్నాయి.",
+        "te_en": "🔒 Lockdown ON — dongala hechcharikalu ippudu active ga unnayi.",
+    },
+    "lockdown_off": {
+        "en": "🔓 Lockdown OFF — intruder alerts muted. Send /lockdown to arm again.",
+        "te": "🔓 లాక్‌డౌన్ ఆఫ్ — హెచ్చరికలు ఆగిపోయాయి. మళ్ళీ ఆన్ చేయడానికి /lockdown పంపండి.",
+        "te_en": "🔓 Lockdown OFF — hechcharikalu aagipoyayi. Malli on cheyataniki /lockdown pampandi.",
+    },
+    "mist_on": {
+        "en": "💨 Mist ON.",
+        "te": "💨 మిస్ట్ ఆన్ అయింది.",
+        "te_en": "💨 Mist ON ayyindi.",
+    },
+    "mist_off": {
+        "en": "💨 Mist OFF.",
+        "te": "💨 మిస్ట్ ఆఫ్ అయింది.",
+        "te_en": "💨 Mist OFF ayyindi.",
+    },
+    "soil_line": {
+        "en": "{p}🌱 Soil: {m}% ({st}) | 🌡️ {t}°C | 💧 {h}%",
+        "te": "{p}🌱 నేల తేమ: {m}% ({st}) | 🌡️ ఉష్ణోగ్రత: {t}°C | 💧 గాలిలో తేమ: {h}%",
+        "te_en": "{p}🌱 Nela thema: {m}% ({st}) | 🌡️ Ushnograta: {t}°C | 💧 Gaalilo thema: {h}%",
+    },
+    "soil_changed": {
+        "en": "⚠️ Soil state changed! ",
+        "te": "⚠️ నేల స్థితి మారింది! ",
+        "te_en": "⚠️ Nela sthithi maarindi! ",
+    },
+    "auto_mist_start": {
+        "en": "🤖 Auto-irrigation: soil {m}% → misting until it reads ≤{tgt}% ({n}/{max} this hour)",
+        "te": "🤖 ఆటో నీటిపారుదల: నేల {m}% → ≤{tgt}% అయ్యే వరకు మిస్ట్ ({n}/{max} ఈ గంటలో)",
+        "te_en": "🤖 Auto neeti paarudala: nela {m}% → ≤{tgt}% ayye varaku mist ({n}/{max} ee gantalo)",
+    },
+    "mist_stopped_wet": {
+        "en": "💧 Soil reached {m}% (≤{tgt}%) — mist stopped after {s}s.",
+        "te": "💧 నేల {m}% కి చేరింది (≤{tgt}%) — {s} సెకన్లకు మిస్ట్ ఆగింది.",
+        "te_en": "💧 Nela {m}% ki cherindi (≤{tgt}%) — {s} seconds ki mist aagindi.",
+    },
+    "camera_removed": {
+        "en": "🚨 [CRITICAL]: THE CAMERA WAS FORCEFULLY REMOVED — {t}",
+        "te": "🚨 [అత్యవసరం]: కెమెరా బలవంతంగా తీసివేయబడింది — {t}",
+        "te_en": "🚨 [CRITICAL]: Camera balavanthanga theesivesaru — {t}",
+    },
+    "rain_skipped": {
+        "en": "🌧 Spray skipped — {why}.",
+        "te": "🌧 వర్షం వచ్చే అవకాశం ఉంది — స్ప్రే ఆపివేయబడింది ({why}).",
+        "te_en": "🌧 Varsham vacche avakasam undi — spray aapivesamu ({why}).",
+    },
+    "heat_warn": {
+        "en": "🔥 High temperature: {t}°C",
+        "te": "🔥 అధిక ఉష్ణోగ్రత: {t}°C",
+        "te_en": "🔥 Adhika ushnograta: {t}°C",
+    },
+    "dry_air_warn": {
+        "en": "🏜️ Low humidity: {h}%",
+        "te": "🏜️ గాలిలో తేమ తక్కువగా ఉంది: {h}%",
+        "te_en": "🏜️ Gaalilo thema takkuva ga undi: {h}%",
+    },
+    "climate_header": {
+        "en": "⚠️ Climate warning",
+        "te": "⚠️ వాతావరణ హెచ్చరిక",
+        "te_en": "⚠️ Vaatavarana hechcharika",
+    },
+    "lang_set": {
+        "en": "✅ Language set to English.",
+        "te": "✅ భాష తెలుగుకి మార్చబడింది.",
+        "te_en": "✅ Bhasha Telugu (English letters) ki marchabadindi.",
+    },
+}
+
+
+def cur_lang():
+    with settings_lock:
+        return settings.get("lang", "en")
+
+
+def msg(key, **kw):
+    entry = MSGS.get(key)
+    if not entry:
+        return key
+    template = entry.get(cur_lang(), entry["en"])
+    return template.format(**kw)
 settings_lock = threading.Lock()
 
 
@@ -395,7 +491,7 @@ class CameraRelayHandler(http.server.BaseHTTPRequestHandler):
                 log_event("CAMERA_REMOVED")
                 threading.Thread(
                     target=send_telegram_message,
-                    args=(f"🚨 [CRITICAL]: THE CAMERA WAS FORCEFULLY REMOVED — {now_str()}",),
+                    args=(msg("camera_removed", t=now_str()),),
                     daemon=True,
                 ).start()
             with camera_results_lock:
@@ -501,7 +597,7 @@ def mist_burst(seconds, reason="", stop_when_wet=False):
             arduino_send("MIST_OFF")
             set_mist_state(False)
             if stopped_wet:
-                send_telegram_message(f"💧 Soil reached {state['moisture']}% (≤{AUTO_MIST_STOP_PCT}%) — mist stopped after {time.time() - t0:.1f}s.")
+                send_telegram_message(msg("mist_stopped_wet", m=state["moisture"], tgt=AUTO_MIST_STOP_PCT, s=f"{time.time() - t0:.1f}"))
                 log_event("MIST_STOPPED_WET", f"{time.time() - t0:.1f}s")
     finally:
         mist_burst_busy.release()
@@ -619,9 +715,9 @@ def listen_arduino(port):
                     state_changed = last_soil_state is not None and soil_state != last_soil_state
                     due = now - last_soil_alert >= SOIL_ALERT_INTERVAL
                     if (due or state_changed) and settings["alerts"]:
-                        prefix = "⚠️ Soil state changed! " if state_changed else ""
+                        prefix = msg("soil_changed") if state_changed else ""
                         send_telegram_message(
-                            f"{prefix}🌱 Soil: {moisture}% ({soil_state}) | 🌡️ {temp:.1f}°C | 💧 {humidity:.0f}%")
+                            msg("soil_line", p=prefix, m=moisture, st=soil_state, t=f"{temp:.1f}", h=f"{humidity:.0f}"))
                         last_soil_alert = now
                     last_soil_state = soil_state
 
@@ -629,11 +725,11 @@ def listen_arduino(port):
                     if settings["alerts"] and now - last_climate_alert >= CLIMATE_ALERT_INTERVAL:
                         warn = []
                         if temp >= TEMP_HIGH_C:
-                            warn.append(f"🔥 High temperature: {temp:.1f}°C")
+                            warn.append(msg("heat_warn", t=f"{temp:.1f}"))
                         if 0 < humidity <= HUMIDITY_LOW_PCT:
-                            warn.append(f"🏜️ Low humidity: {humidity:.0f}%")
+                            warn.append(msg("dry_air_warn", h=f"{humidity:.0f}"))
                         if warn:
-                            send_telegram_message("⚠️ Climate warning\n" + "\n".join(warn))
+                            send_telegram_message(msg("climate_header") + "\n" + "\n".join(warn))
                             log_event("CLIMATE_WARNING", "; ".join(warn))
                             last_climate_alert = now
         except Exception as e:
@@ -765,11 +861,11 @@ def auto_mist_loop():
             state["auto_mist_times"].append(time.time())
             state["dry_since"] = time.time()  # restart the dry timer after a spray
         if skip:
-            send_telegram_message(f"🌧 Auto-irrigation skipped — {why}.")
+            send_telegram_message(msg("rain_skipped", why=why))
             log_event("AUTO_MIST_SKIPPED_RAIN", why)
             continue
-        send_telegram_message(f"🤖 Auto-irrigation: soil {moisture}% → misting until it reads ≤{AUTO_MIST_STOP_PCT}% "
-                              f"({len(recent) + 1}/{AUTO_MIST_MAX_PER_HOUR} this hour)")
+        send_telegram_message(msg("auto_mist_start", m=moisture, tgt=AUTO_MIST_STOP_PCT,
+                                  n=len(recent) + 1, max=AUTO_MIST_MAX_PER_HOUR))
         threading.Thread(target=mist_burst, args=(AUTO_MIST_MAX_SECONDS, "auto", True), daemon=True).start()
 
 
@@ -936,7 +1032,7 @@ def handle_ir_event():
     log_event("INTRUDER")
     if not settings["alerts"] or not settings["lockdown"]:
         return
-    send_telegram_message(f"🚨 Someone is in your farm! {now_str()}")
+    send_telegram_message(msg("intruder", t=now_str()))
     if not intruder_video_busy.locked():
         threading.Thread(target=intruder_response, daemon=True).start()
     threading.Thread(target=mist_burst, args=(MIST_BURST_SECONDS, "intruder"), daemon=True).start()
@@ -956,6 +1052,7 @@ MENU_KEYBOARD = {"inline_keyboard": [
      {"text": "⏱ Spray 10s", "callback_data": "/spray"}],
     [{"text": "📷 Photo", "callback_data": "/photo"},
      {"text": "🎥 Video 5s", "callback_data": "/video"}],
+    [{"text": "🌐 Language", "callback_data": "/lang"}],
     [{"text": "🤖 Auto-mist ON", "callback_data": "/auto_mist on"},
      {"text": "🤖 Auto-mist OFF", "callback_data": "/auto_mist off"},
      {"text": "🌦 Weather", "callback_data": "/weather"}],
@@ -973,6 +1070,7 @@ ALIASES = {
     "/rainskip on": "/rain_skip on", "/rainskip off": "/rain_skip off",
     "/forecast": "/weather",
     "/start": "/help", "/keyboard": "/menu", "/buttons": "/menu",
+    "/language": "/lang", "/telugu": "/lang te", "/english": "/lang en",
     "/continue": "/unmute", "/silence": "/mute", "/shutdown": "/stop",
     "/stop yes": "/stop", "/stop confirm": "/stop",
 }
@@ -1102,6 +1200,19 @@ def handle_command(text):
             send_telegram_message(f"✅ Water (wet) calibration = {raw}. Soil % now uses your calibration.")
         else:
             send_telegram_message("Usage: /calibrate air | water | reset")
+    elif cmd == "/lang":
+        if arg in ("en", "te", "te_en"):
+            with settings_lock:
+                settings["lang"] = arg
+            save_settings()
+            send_telegram_message(MSGS["lang_set"][arg])
+        else:
+            kb = {"inline_keyboard": [[
+                {"text": "English", "callback_data": "/lang en"},
+                {"text": "తెలుగు", "callback_data": "/lang te"},
+                {"text": "Telugu (English)", "callback_data": "/lang te_en"},
+            ]]}
+            send_telegram_message("🌐 Choose language / భాషను ఎంచుకోండి / Bhashanu enchukondi:", reply_markup=kb)
     elif cmd == "/weather":
         if arg == "set":
             loc = " ".join(parts[2:])
@@ -1126,7 +1237,7 @@ def handle_command(text):
             settings["lockdown"] = True
             save_settings()
             log_event("LOCKDOWN_ON")
-            send_telegram_message(LOCKDOWN_TEXT)
+            send_telegram_message(msg("lockdown_on"))
     elif cmd == "/unlock":
         if not settings["lockdown"]:
             send_telegram_message("🔓 Already unlocked.")
@@ -1134,7 +1245,7 @@ def handle_command(text):
             settings["lockdown"] = False
             save_settings()
             log_event("LOCKDOWN_OFF")
-            send_telegram_message(UNLOCK_TEXT)
+            send_telegram_message(msg("lockdown_off"))
     elif cmd == "/stop":
         handle_stop(text)
     elif cmd == "/mute":
@@ -1202,7 +1313,7 @@ def handle_command(text):
         elif arduino_send("MIST_ON"):
             set_mist_state(True)
             log_event("MIST_ON", "manual")
-            send_telegram_message(MIST_ON_TEXT)
+            send_telegram_message(msg("mist_on"))
         else:
             send_telegram_message(ARDUINO_MISSING_TEXT)
     elif cmd == "/mist_off":
@@ -1211,7 +1322,7 @@ def handle_command(text):
         elif arduino_send("MIST_OFF"):
             set_mist_state(False)
             log_event("MIST_OFF", "manual")
-            send_telegram_message(MIST_OFF_TEXT)
+            send_telegram_message(msg("mist_off"))
         else:
             send_telegram_message(ARDUINO_MISSING_TEXT)
     elif cmd == "/spray":
