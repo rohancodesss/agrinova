@@ -66,6 +66,19 @@ h2 .tag{font-family:var(--mono);color:var(--green);font-size:1rem;display:block}
 .node small{display:block;color:#5ea87e;font-size:.72rem}
 .flow{width:52px;height:4px;border-radius:2px;background:repeating-linear-gradient(90deg,var(--green) 0 10px,transparent 10px 18px);background-size:36px 4px;animation:dash 1s linear infinite}
 @keyframes dash{to{background-position:36px 0}}
+/* rule cards */
+.rules{display:flex;flex-direction:column;gap:.6rem;font-family:var(--mono);font-size:.86rem}
+.rule{background:#0d2818;color:#c9f5da;border-radius:12px;padding:.8rem 1rem;border-left:none;display:flex;flex-wrap:wrap;gap:.35em;align-items:baseline;transition:transform .18s}
+.rule:hover{transform:translateX(6px)}
+.kw{font-weight:700}
+.kw.if{color:#5cf1ff}.kw.and{color:#8be9b7}.kw.then{color:#ffcc4d}.kw.or{color:#ff9d5c}
+.relaybox{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.2rem;margin:1rem 0}
+.relaybox b{color:var(--green-d)}
+.switchrow{display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;margin-top:1rem;font-family:var(--mono);font-size:.85rem}
+.sw{background:#0d2818;border-radius:12px;padding:.9rem 1.2rem;text-align:center;color:#c9f5da;min-width:190px}
+.sw .lamp{display:inline-block;width:14px;height:14px;border-radius:50%;margin-right:.4em;vertical-align:-2px}
+.sw .on{background:#7ee2a8;box-shadow:0 0 12px #7ee2a8;animation:pulse 1.4s infinite}
+.sw .off{background:#3a5a46}
 /* chat demo */
 .phone{max-width:420px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:22px;overflow:hidden;box-shadow:0 16px 40px rgba(13,40,24,.14)}
 .phone .top{background:var(--green);color:#fff;padding:.7rem 1rem;font-weight:600;display:flex;align-items:center;gap:.5rem}
@@ -151,6 +164,30 @@ footer a{color:#8be9b7}
     <div class="node">💨 Mist relay<small>sprays until soil target hit</small></div>
   </div>
   <p class="rv" style="margin-top:1.2rem;color:var(--mut)">The safety-critical path is <b>pure hardware</b> — synchroniser → edge detector → hardware cooldown → UART. It cannot crash, needs no OS, and keeps detecting even if every computer in the system goes down. Software adds the intelligence: cameras, forecasts, graphs, language.</p>
+</section>
+
+<section id="logic">
+  <h2 class="rv"><span class="tag">// how this works</span>The relay logic, in plain English</h2>
+
+  <div class="relaybox rv">
+    <p><b>The problem:</b> the mist maker needs more electric current than an Arduino pin can safely supply. Feeding it straight from the Arduino would burn the pin.</p>
+    <p style="margin-top:.5rem"><b>The fix — a relay:</b> a relay is just an <i>electrically-controlled switch</i>. The mist maker gets its power from its own 5&nbsp;V wall charger, and that power line passes <i>through</i> the relay's switch contacts. The Arduino only flips the switch — it never carries the load. Our relay is <b>active-LOW</b>: pulling pin A2 LOW closes the switch.</p>
+    <div class="switchrow">
+      <div class="sw"><span class="lamp off"></span>A2 = HIGH → switch open<br><span style="color:#5ea87e">mist gets no power · OFF</span></div>
+      <div class="sw"><span class="lamp on"></span>A2 = LOW → switch closed<br><span style="color:#8be9b7">charger powers mist · ON</span></div>
+    </div>
+  </div>
+
+  <div class="rules rv">
+    <div class="rule"><span class="kw if">IF</span> soil is dry (below the wet line) <span class="kw and">AND</span> auto-mist is on <span class="kw and">AND</span> no rain is expected <span class="kw then">THEN</span> close the relay — mist ON</div>
+    <div class="rule"><span class="kw if">IF</span> soil reaches the target (≤ 30 %) <span class="kw or">OR</span> the 10-minute safety cap is hit <span class="kw then">THEN</span> open the relay — mist OFF</div>
+    <div class="rule"><span class="kw if">IF</span> the IR beam is broken <span class="kw and">AND</span> lockdown is armed <span class="kw then">THEN</span> alert the farmer + photo + 5 s video + a 10 s mist burst to scare the animal</div>
+    <div class="rule"><span class="kw if">IF</span> rain chance ≥ 60 % in the next 6 hours <span class="kw then">THEN</span> skip the scheduled spray and tell the farmer — water saved</div>
+    <div class="rule"><span class="kw if">IF</span> the camera is pulled out mid-recording <span class="kw then">THEN</span> send a CRITICAL alert with the partial clip as evidence</div>
+    <div class="rule"><span class="kw if">IF</span> any board or the camera disconnects <span class="kw then">THEN</span> tell the farmer, keep retrying, and announce when it's back</div>
+    <div class="rule"><span class="kw if">IF</span> the computer crashes entirely <span class="kw then">THEN</span> the FPGA keeps detecting anyway — it's hardware, it can't crash</div>
+  </div>
+  <p class="rv" style="margin-top:1rem;color:var(--mut)">Every rule above runs automatically, 24/7 — the farmer only sees the results on Telegram.</p>
 </section>
 
 <section id="features">
