@@ -101,7 +101,7 @@ HELP_TEXT = (
     "/rain_skip on|off — skip sprays if rain likely\n"
     "\n"
     "⚙️ Other\n"
-    "/lang — language: English / తెలుగు / Telugu (English)\n"
+    "/lang — language: English / हिंदी / తెలుగు / Telugu (English)\n"
     "/rotate  /rotate_stop — servo\n"
     "/menu — button keyboard\n"
     "/about — project info\n"
@@ -152,7 +152,7 @@ settings = {
     "soil_raw_water": None,     # calibration: raw value in water (wet)
     "location": "",             # wttr.in location, e.g. "Hyderabad" (empty = geo-IP guess)
     "rain_skip": True,          # skip scheduled/auto sprays when rain is likely
-    "lang": "en",               # en | te (Telugu) | te_en (Telugu in English script)
+    "lang": "en",               # en | hi (Hindi) | te (Telugu) | te_en (Telugu in English script)
 }
 
 # ---------------------------------------------------------------------------
@@ -160,76 +160,91 @@ settings = {
 # ---------------------------------------------------------------------------
 MSGS = {
     "intruder": {
+        "hi": "🚨 आपके खेत में कोई है! {t}",
         "en": "🚨 Someone is in your farm! {t}",
         "te": "🚨 మీ పొలంలో ఎవరో ఉన్నారు! {t}",
         "te_en": "🚨 Mee polam lo evaro unnaru! {t}",
     },
     "lockdown_on": {
+        "hi": "🔒 लॉकडाउन चालू — घुसपैठ की चेतावनियाँ अब सक्रिय हैं।",
         "en": "🔒 Lockdown ON — IR intruder alerts are now active.",
         "te": "🔒 లాక్‌డౌన్ ఆన్ — దొంగల హెచ్చరికలు ఇప్పుడు యాక్టివ్‌గా ఉన్నాయి.",
         "te_en": "🔒 Lockdown ON — dongala hechcharikalu ippudu active ga unnayi.",
     },
     "lockdown_off": {
+        "hi": "🔓 लॉकडाउन बंद — चेतावनियाँ रुक गई हैं। फिर से चालू करने के लिए /lockdown भेजें।",
         "en": "🔓 Lockdown OFF — intruder alerts muted. Send /lockdown to arm again.",
         "te": "🔓 లాక్‌డౌన్ ఆఫ్ — హెచ్చరికలు ఆగిపోయాయి. మళ్ళీ ఆన్ చేయడానికి /lockdown పంపండి.",
         "te_en": "🔓 Lockdown OFF — hechcharikalu aagipoyayi. Malli on cheyataniki /lockdown pampandi.",
     },
     "mist_on": {
+        "hi": "💨 मिस्ट चालू हो गई।",
         "en": "💨 Mist ON.",
         "te": "💨 మిస్ట్ ఆన్ అయింది.",
         "te_en": "💨 Mist ON ayyindi.",
     },
     "mist_off": {
+        "hi": "💨 मिस्ट बंद हो गई।",
         "en": "💨 Mist OFF.",
         "te": "💨 మిస్ట్ ఆఫ్ అయింది.",
         "te_en": "💨 Mist OFF ayyindi.",
     },
     "soil_line": {
+        "hi": "{p}🌱 मिट्टी की नमी: {m}% ({st}) | 🌡️ तापमान: {t}°C | 💧 हवा में नमी: {h}%",
         "en": "{p}🌱 Soil: {m}% ({st}) | 🌡️ {t}°C | 💧 {h}%",
         "te": "{p}🌱 నేల తేమ: {m}% ({st}) | 🌡️ ఉష్ణోగ్రత: {t}°C | 💧 గాలిలో తేమ: {h}%",
         "te_en": "{p}🌱 Nela thema: {m}% ({st}) | 🌡️ Ushnograta: {t}°C | 💧 Gaalilo thema: {h}%",
     },
     "soil_changed": {
+        "hi": "⚠️ मिट्टी की स्थिति बदल गई! ",
         "en": "⚠️ Soil state changed! ",
         "te": "⚠️ నేల స్థితి మారింది! ",
         "te_en": "⚠️ Nela sthithi maarindi! ",
     },
     "auto_mist_start": {
+        "hi": "🤖 ऑटो सिंचाई: मिट्टी {m}% → ≤{tgt}% होने तक मिस्ट ({n}/{max} इस घंटे)",
         "en": "🤖 Auto-irrigation: soil {m}% → misting until it reads ≤{tgt}% ({n}/{max} this hour)",
         "te": "🤖 ఆటో నీటిపారుదల: నేల {m}% → ≤{tgt}% అయ్యే వరకు మిస్ట్ ({n}/{max} ఈ గంటలో)",
         "te_en": "🤖 Auto neeti paarudala: nela {m}% → ≤{tgt}% ayye varaku mist ({n}/{max} ee gantalo)",
     },
     "mist_stopped_wet": {
+        "hi": "💧 मिट्टी {m}% पर पहुँची (≤{tgt}%) — {s} सेकंड बाद मिस्ट बंद।",
         "en": "💧 Soil reached {m}% (≤{tgt}%) — mist stopped after {s}s.",
         "te": "💧 నేల {m}% కి చేరింది (≤{tgt}%) — {s} సెకన్లకు మిస్ట్ ఆగింది.",
         "te_en": "💧 Nela {m}% ki cherindi (≤{tgt}%) — {s} seconds ki mist aagindi.",
     },
     "camera_removed": {
+        "hi": "🚨 [आपातकाल]: कैमरा ज़बरदस्ती निकाला गया — {t}",
         "en": "🚨 [CRITICAL]: THE CAMERA WAS FORCEFULLY REMOVED — {t}",
         "te": "🚨 [అత్యవసరం]: కెమెరా బలవంతంగా తీసివేయబడింది — {t}",
         "te_en": "🚨 [CRITICAL]: Camera balavanthanga theesivesaru — {t}",
     },
     "rain_skipped": {
+        "hi": "🌧 बारिश की संभावना है — स्प्रे रोक दिया गया ({why})।",
         "en": "🌧 Spray skipped — {why}.",
         "te": "🌧 వర్షం వచ్చే అవకాశం ఉంది — స్ప్రే ఆపివేయబడింది ({why}).",
         "te_en": "🌧 Varsham vacche avakasam undi — spray aapivesamu ({why}).",
     },
     "heat_warn": {
+        "hi": "🔥 तापमान बहुत अधिक: {t}°C",
         "en": "🔥 High temperature: {t}°C",
         "te": "🔥 అధిక ఉష్ణోగ్రత: {t}°C",
         "te_en": "🔥 Adhika ushnograta: {t}°C",
     },
     "dry_air_warn": {
+        "hi": "🏜️ हवा में नमी कम है: {h}%",
         "en": "🏜️ Low humidity: {h}%",
         "te": "🏜️ గాలిలో తేమ తక్కువగా ఉంది: {h}%",
         "te_en": "🏜️ Gaalilo thema takkuva ga undi: {h}%",
     },
     "climate_header": {
+        "hi": "⚠️ मौसम चेतावनी",
         "en": "⚠️ Climate warning",
         "te": "⚠️ వాతావరణ హెచ్చరిక",
         "te_en": "⚠️ Vaatavarana hechcharika",
     },
     "lang_set": {
+        "hi": "✅ भाषा हिंदी में बदल दी गई।",
         "en": "✅ Language set to English.",
         "te": "✅ భాష తెలుగుకి మార్చబడింది.",
         "te_en": "✅ Bhasha Telugu (English letters) ki marchabadindi.",
@@ -1079,6 +1094,7 @@ ALIASES = {
     "/forecast": "/weather",
     "/start": "/help", "/keyboard": "/menu", "/buttons": "/menu",
     "/language": "/lang", "/telugu": "/lang te", "/english": "/lang en",
+    "/hindi": "/lang hi",
     "/continue": "/unmute", "/silence": "/mute", "/shutdown": "/stop",
     "/stop yes": "/stop", "/stop confirm": "/stop",
 }
@@ -1209,7 +1225,7 @@ def handle_command(text):
         else:
             send_telegram_message("Usage: /calibrate air | water | reset")
     elif cmd == "/lang":
-        if arg in ("en", "te", "te_en"):
+        if arg in ("en", "hi", "te", "te_en"):
             with settings_lock:
                 settings["lang"] = arg
             save_settings()
@@ -1217,10 +1233,12 @@ def handle_command(text):
         else:
             kb = {"inline_keyboard": [[
                 {"text": "English", "callback_data": "/lang en"},
+                {"text": "हिंदी", "callback_data": "/lang hi"},
+            ], [
                 {"text": "తెలుగు", "callback_data": "/lang te"},
                 {"text": "Telugu (English)", "callback_data": "/lang te_en"},
             ]]}
-            send_telegram_message("🌐 Choose language / భాషను ఎంచుకోండి / Bhashanu enchukondi:", reply_markup=kb)
+            send_telegram_message("🌐 Choose language / भाषा चुनें / భాషను ఎంచుకోండి:", reply_markup=kb)
     elif cmd == "/weather":
         if arg == "set":
             loc = " ".join(parts[2:])

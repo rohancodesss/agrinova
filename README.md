@@ -201,7 +201,7 @@ The detection path must never fail. On the FPGA it is **pure combinational + reg
 - [ ] `/live` real-time video streaming
 - [ ] Crop profiles (per-crop moisture targets)
 - [x] Telugu alerts (native script + Latin script, `/lang`)
-- [ ] Hindi alerts
+- [x] Hindi alerts (हिंदी, `/lang hi`)
 - [ ] ESP32 / Raspberry Pi standalone build (no laptop)
 - [ ] Solar power + FPGA-driven buzzer deterrent
 
