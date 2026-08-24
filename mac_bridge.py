@@ -86,6 +86,7 @@ HELP_TEXT = (
     "🔒 Security\n"
     "/lockdown  /unlock — arm / disarm IR alerts\n"
     "/mute  /unmute — silence / resume all alerts\n"
+    "/messages [n] — routine updates per day (alarms always sent)\n"
     "/photo — take a photo\n"
     "/video [sec] — record video (1-30)\n"
     "\n"
@@ -152,6 +153,7 @@ settings = {
     "soil_raw_water": None,     # calibration: raw value in water (wet)
     "location": "",             # wttr.in location, e.g. "Hyderabad" (empty = geo-IP guess)
     "rain_skip": True,          # skip scheduled/auto sprays when rain is likely
+    "daily_msgs": 30,           # farmer's cap on routine messages/day (0 = unlimited)
     "lang": "en",               # en | hi (Hindi) | te (Telugu) | te_en (Telugu in English script)
 }
 
@@ -303,6 +305,9 @@ state = {
     "dry_since": None,
     "mist_started": None, "mist_runtime_today": 0.0,
     "intruder_events": [],      # list of epoch times (today)
+    "routine_sent_today": 0,    # routine (non-critical) messages sent since midnight
+    "last_routine": 0.0,
+    "last_sent_reading": None,  # (moisture, temp, humidity) of last soil update sent
     "auto_mist_times": deque(maxlen=50),
     "history": deque(maxlen=HISTORY_HOURS * 60 * 12 // 5),  # ~1 reading per 5s
     "day": time.strftime("%Y-%m-%d"),
@@ -317,6 +322,7 @@ def rollover_day_if_needed():
             state["day"] = today
             state["intruder_events"] = []
             state["mist_runtime_today"] = 0.0
+            state["routine_sent_today"] = 0
 
 
 def log_reading(moisture, temp, humidity, wet, raw):
@@ -392,6 +398,34 @@ def send_telegram_message(text, reply_markup=None):
         print(f"[telegram] sent: {text.splitlines()[0]!r}")
     except Exception as e:
         print(f"[telegram] send failed: {e}", file=sys.stderr)
+
+
+def send_routine(text, force=False):
+    """Send a non-critical message, respecting the farmer's daily budget.
+
+    The budget spreads across the day: with /messages 24 a routine update can
+    go out at most once an hour. `force` skips the spacing (state changes,
+    auto-mist events) but never the daily cap. Critical alerts don't come
+    through here — they always use send_telegram_message directly.
+    Returns True if the message was sent."""
+    rollover_day_if_needed()
+    with settings_lock:
+        limit = settings.get("daily_msgs", 30)
+    now = time.time()
+    with state_lock:
+        sent = state["routine_sent_today"]
+        last = state["last_routine"]
+    if limit > 0:
+        if sent >= limit:
+            print(f"[budget] dropped (cap {limit}/day reached): {text.splitlines()[0]!r}")
+            return False
+        if not force and now - last < 86400 / limit:
+            return False
+    with state_lock:
+        state["routine_sent_today"] += 1
+        state["last_routine"] = now
+    send_telegram_message(text)
+    return True
 
 
 def answer_callback(callback_id, text=""):
@@ -620,7 +654,8 @@ def mist_burst(seconds, reason="", stop_when_wet=False):
             arduino_send("MIST_OFF")
             set_mist_state(False)
             if stopped_wet:
-                send_telegram_message(msg("mist_stopped_wet", m=state["moisture"], tgt=AUTO_MIST_STOP_PCT, s=f"{time.time() - t0:.1f}"))
+                send_routine(msg("mist_stopped_wet", m=state["moisture"], tgt=AUTO_MIST_STOP_PCT,
+                                 s=f"{time.time() - t0:.1f}"), force=True)
                 log_event("MIST_STOPPED_WET", f"{time.time() - t0:.1f}s")
     finally:
         mist_burst_busy.release()
@@ -734,14 +769,22 @@ def listen_arduino(port):
                         set_mist_state(parts[5] == "MIST_ON")
                     log_reading(moisture, temp, humidity, wet, raw)
 
-                    # Routine / state-change soil message
+                    # Soil message: only when something meaningfully changed,
+                    # rationed by the farmer's /messages budget.
                     state_changed = last_soil_state is not None and soil_state != last_soil_state
-                    due = now - last_soil_alert >= SOIL_ALERT_INTERVAL
-                    if (due or state_changed) and settings["alerts"]:
+                    with state_lock:
+                        prev = state["last_sent_reading"]
+                    meaningful = (prev is None or state_changed
+                                  or abs(moisture - prev[0]) >= 3
+                                  or abs(temp - prev[1]) >= 1.5
+                                  or abs(humidity - prev[2]) >= 8)
+                    if meaningful and settings["alerts"]:
                         prefix = msg("soil_changed") if state_changed else ""
-                        send_telegram_message(
-                            msg("soil_line", p=prefix, m=moisture, st=soil_state, t=f"{temp:.1f}", h=f"{humidity:.0f}"))
-                        last_soil_alert = now
+                        if send_routine(msg("soil_line", p=prefix, m=moisture, st=soil_state,
+                                            t=f"{temp:.1f}", h=f"{humidity:.0f}"),
+                                        force=state_changed):
+                            with state_lock:
+                                state["last_sent_reading"] = (moisture, temp, humidity)
                     last_soil_state = soil_state
 
                     # Heat / dry-air warnings
@@ -751,8 +794,7 @@ def listen_arduino(port):
                             warn.append(msg("heat_warn", t=f"{temp:.1f}"))
                         if 0 < humidity <= HUMIDITY_LOW_PCT:
                             warn.append(msg("dry_air_warn", h=f"{humidity:.0f}"))
-                        if warn:
-                            send_telegram_message(msg("climate_header") + "\n" + "\n".join(warn))
+                        if warn and send_routine(msg("climate_header") + "\n" + "\n".join(warn), force=True):
                             log_event("CLIMATE_WARNING", "; ".join(warn))
                             last_climate_alert = now
         except Exception as e:
@@ -884,11 +926,11 @@ def auto_mist_loop():
             state["auto_mist_times"].append(time.time())
             state["dry_since"] = time.time()  # restart the dry timer after a spray
         if skip:
-            send_telegram_message(msg("rain_skipped", why=why))
+            send_routine(msg("rain_skipped", why=why), force=True)
             log_event("AUTO_MIST_SKIPPED_RAIN", why)
             continue
-        send_telegram_message(msg("auto_mist_start", m=moisture, tgt=AUTO_MIST_STOP_PCT,
-                                  n=len(recent) + 1, max=AUTO_MIST_MAX_PER_HOUR))
+        send_routine(msg("auto_mist_start", m=moisture, tgt=AUTO_MIST_STOP_PCT,
+                         n=len(recent) + 1, max=AUTO_MIST_MAX_PER_HOUR), force=True)
         threading.Thread(target=mist_burst, args=(AUTO_MIST_MAX_SECONDS, "auto", True), daemon=True).start()
 
 
@@ -973,7 +1015,8 @@ def build_status():
               f"🔒 Lockdown: {'ON' if settings['lockdown'] else 'OFF'}   🔔 Alerts: {'ON' if settings['alerts'] else 'MUTED'}",
               f"🤖 Auto-mist: {'ON' if settings['auto_mist'] else 'OFF'}   ⏰ Schedules: {len(settings['schedules'])}",
               f"🚨 Intruders today: {intr}",
-              f"🌧 Rain-skip: {'ON' if settings['rain_skip'] else 'OFF'}"]
+              f"🌧 Rain-skip: {'ON' if settings['rain_skip'] else 'OFF'}"
+              + f"   ✉️ {s['routine_sent_today']}/{settings.get('daily_msgs') or '∞'} msgs today"]
     if not calibrated():
         lines.append("ℹ️ Soil not calibrated — /calibrate air then /calibrate water")
     return "\n".join(lines)
@@ -1095,6 +1138,7 @@ ALIASES = {
     "/start": "/help", "/keyboard": "/menu", "/buttons": "/menu",
     "/language": "/lang", "/telugu": "/lang te", "/english": "/lang en",
     "/hindi": "/lang hi",
+    "/msgs": "/messages", "/message": "/messages",
     "/continue": "/unmute", "/silence": "/mute", "/shutdown": "/stop",
     "/stop yes": "/stop", "/stop confirm": "/stop",
 }
@@ -1224,6 +1268,39 @@ def handle_command(text):
             send_telegram_message(f"✅ Water (wet) calibration = {raw}. Soil % now uses your calibration.")
         else:
             send_telegram_message("Usage: /calibrate air | water | reset")
+    elif cmd == "/messages":
+        with settings_lock:
+            limit = settings.get("daily_msgs", 30)
+        with state_lock:
+            used = state["routine_sent_today"]
+        if arg is None:
+            kb = {"inline_keyboard": [[
+                {"text": "10/day", "callback_data": "/messages 10"},
+                {"text": "30/day", "callback_data": "/messages 30"},
+                {"text": "60/day", "callback_data": "/messages 60"},
+                {"text": "Unlimited", "callback_data": "/messages unlimited"},
+            ]]}
+            send_telegram_message(
+                f"✉️ Routine messages: {used}/{limit if limit else '∞'} used today.\n"
+                "How many updates do you want per day? (Alarms like intruders and camera "
+                "removal are ALWAYS sent and don't count.)", reply_markup=kb)
+        else:
+            if arg in ("unlimited", "0", "off"):
+                n = 0
+            else:
+                try:
+                    n = max(1, min(500, int(arg)))
+                except ValueError:
+                    send_telegram_message("Usage: /messages [number] — e.g. /messages 20, or /messages unlimited")
+                    return
+            with settings_lock:
+                settings["daily_msgs"] = n
+            save_settings()
+            if n:
+                send_telegram_message(f"✉️ Got it — at most {n} routine messages per day "
+                                      f"(about one every {fmt_duration(86400 / n)}). Alarms always come through.")
+            else:
+                send_telegram_message("✉️ Unlimited routine messages.")
     elif cmd == "/lang":
         if arg in ("en", "hi", "te", "te_en"):
             with settings_lock:
