@@ -6,3 +6,4 @@ bridge.log
 __pycache__/
 .DS_Store
 build_fw/
+agrinova_secrets.json

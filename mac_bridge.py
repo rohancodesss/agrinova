@@ -34,9 +34,17 @@ CAMERA_RELAY_PORT = 5001
 SERIAL_PORT_HINT = "/dev/cu.usbserial-120"
 BAUD_RATE = 9600
 
-BOT_TOKEN = "REDACTED_BOT_TOKEN"
-CHAT_ID = "REDACTED_CHAT_ID"
-ALLOWED_CHAT_IDS = {CHAT_ID}  # anyone else is ignored (bot token is effectively public)
+# Secrets live in agrinova_secrets.json (gitignored) — never in this file.
+SECRETS_FILE = os.path.join(BASE_DIR, "agrinova_secrets.json")
+try:
+    with open(SECRETS_FILE) as _f:
+        _secrets = json.load(_f)
+    BOT_TOKEN = _secrets["bot_token"]
+    CHAT_ID = str(_secrets["chat_id"])
+except (FileNotFoundError, KeyError, json.JSONDecodeError) as _e:
+    sys.exit(f"[bridge] missing/invalid {SECRETS_FILE}: {_e}\n"
+             "Create it with: {\"bot_token\": \"<token from @BotFather>\", \"chat_id\": \"<your chat id>\"}")
+ALLOWED_CHAT_IDS = {CHAT_ID}  # anyone else is ignored
 
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 SEND_MESSAGE_API = f"{API}/sendMessage"
