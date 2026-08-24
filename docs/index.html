@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AgriNova — FPGA + Arduino Smart Farm Guard & Irrigation on Telegram</title>
+<title>AgriNova — FPGA + Arduino Smart Farm Guard &amp; Irrigation on Telegram</title>
 <meta name="description" content="AgriNova: open-source smart crop protection and irrigation for small farmers. FPGA intruder detection with photo/video alerts, weather-aware auto-irrigation, Telugu support — all controlled from Telegram. Total cost ~₹2500.">
 <meta name="keywords" content="smart agriculture, FPGA, Arduino, Telegram bot, IoT farming, irrigation automation, crop protection, iCE40, VSDSquadron, soil moisture, India, INSPIRE MANAK">
 <link rel="canonical" href="https://rohancodesss.github.io/agrinova/">
@@ -11,7 +11,7 @@
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta property="og:title" content="AgriNova — A farm that texts you back">
-<meta property="og:description" content="FPGA + Arduino smart crop protection & irrigation, controlled from Telegram. ~₹2500 in parts. Try the live terminal demo.">
+<meta property="og:description" content="FPGA + Arduino smart crop protection &amp; irrigation, controlled from Telegram. ~₹2500 in parts. Try the live terminal demo.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://rohancodesss.github.io/agrinova/">
 <script type="application/ld+json">
@@ -27,6 +27,7 @@
 html{scroll-behavior:smooth}
 body{font:16px/1.65 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);background:var(--bg)}
 a{color:var(--green);text-decoration:none}a:hover{text-decoration:underline}
+a:focus-visible,button:focus-visible,input:focus-visible,.btn:focus-visible{outline:2px solid var(--green);outline-offset:3px;border-radius:4px}
 .wrap{max-width:960px;margin:0 auto;padding:0 1.2rem}
 /* ---------- animated hero ---------- */
 .hero{position:relative;overflow:hidden;background:linear-gradient(160deg,#0d2818 0%,#14532d 55%,#1a6b3a 100%);color:#eafff2;text-align:center;padding:5.5rem 1rem 5rem}
@@ -38,7 +39,7 @@ a{color:var(--green);text-decoration:none}a:hover{text-decoration:underline}
 .hero .sub{margin:.9rem auto 1.6rem;max-width:620px;color:#b8e6cb;font-size:1.1rem}
 .badges{display:flex;gap:.4rem;justify-content:center;flex-wrap:wrap;margin-bottom:1.8rem}
 .badges img{height:20px}
-.btn{display:inline-block;padding:.72em 1.5em;border-radius:10px;font-weight:600;margin:.3em;transition:transform .15s, box-shadow .15s}
+.btn{display:inline-block;padding:.82em 1.5em;border-radius:10px;font-weight:600;margin:.3em;transition:transform .15s, box-shadow .15s}
 .btn:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(0,0,0,.28);text-decoration:none}
 .btn.pri{background:#fff;color:var(--green-d)}
 .btn.sec{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.35)}
@@ -68,7 +69,7 @@ h2 .tag{font-family:var(--mono);color:var(--green);font-size:1rem;display:block}
 @keyframes dash{to{background-position:36px 0}}
 /* rule cards */
 .rules{display:flex;flex-direction:column;gap:.6rem;font-family:var(--mono);font-size:.86rem}
-.rule{background:#0d2818;color:#c9f5da;border-radius:12px;padding:.8rem 1rem;border-left:none;display:flex;flex-wrap:wrap;gap:.35em;align-items:baseline;transition:transform .18s}
+.rule{background:#0d2818;color:#c9f5da;border-radius:12px;padding:.8rem 1rem;display:flex;flex-wrap:wrap;gap:.35em;align-items:baseline;transition:transform .18s}
 .rule:hover{transform:translateX(6px)}
 .kw{font-weight:700}
 .kw.if{color:#5cf1ff}.kw.and{color:#8be9b7}.kw.then{color:#ffcc4d}.kw.or{color:#ff9d5c}
@@ -79,6 +80,8 @@ h2 .tag{font-family:var(--mono);color:var(--green);font-size:1rem;display:block}
 .sw .lamp{display:inline-block;width:14px;height:14px;border-radius:50%;margin-right:.4em;vertical-align:-2px}
 .sw .on{background:#7ee2a8;box-shadow:0 0 12px #7ee2a8;animation:pulse 1.4s infinite}
 .sw .off{background:#3a5a46}
+.wiring{display:block;max-width:440px;width:100%;margin:1.2rem auto 0;border-radius:12px;border:1px solid var(--line)}
+.wiring-cap{display:block;text-align:center;font-family:var(--mono);font-size:.78rem;color:var(--mut);margin-top:.5rem}
 /* chat demo */
 .phone{max-width:420px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:22px;overflow:hidden;box-shadow:0 16px 40px rgba(13,40,24,.14)}
 .phone .top{background:var(--green);color:#fff;padding:.7rem 1rem;font-weight:600;display:flex;align-items:center;gap:.5rem}
@@ -99,39 +102,39 @@ tr:hover td{background:var(--green-l)}
 footer{margin-top:4rem;padding:2.5rem 1rem;background:#0d2818;color:#b8e6cb;text-align:center;font-size:.9rem}
 footer a{color:#8be9b7}
 /* ---------- terminal widget (bottom-left) ---------- */
-#tbtn{position:fixed;left:18px;bottom:18px;z-index:50;background:#0d2818;color:#8be9b7;border:1px solid #2E8B57;border-radius:999px;padding:.7em 1.15em;font-family:var(--mono);font-size:.9rem;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.35);animation:bob 3s ease-in-out infinite}
+#tbtn{position:fixed;left:calc(18px + env(safe-area-inset-left));bottom:calc(18px + env(safe-area-inset-bottom));z-index:50;background:#0d2818;color:#8be9b7;border:1px solid #2E8B57;border-radius:999px;padding:.85em 1.15em;font-family:var(--mono);font-size:.9rem;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.35);animation:bob 3s ease-in-out infinite;min-height:44px}
 #tbtn:hover{background:#14532d}
 @keyframes bob{50%{transform:translateY(-4px)}}
-#tpanel{position:fixed;left:18px;bottom:74px;z-index:49;width:min(480px,calc(100vw - 36px));height:min(430px,62vh);background:#0a0f0a;border:1px solid #2E8B57;border-radius:14px;display:none;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5);opacity:0;transform:translateY(16px) scale(.98);transition:opacity .25s,transform .25s}
+#tpanel{position:fixed;left:calc(18px + env(safe-area-inset-left));bottom:calc(74px + env(safe-area-inset-bottom));z-index:49;width:min(480px,calc(100vw - 36px));height:min(430px,62vh);background:#0a0f0a;border:1px solid #2E8B57;border-radius:14px;display:none;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.5);opacity:0;transform:translateY(16px) scale(.98);transition:opacity .25s,transform .25s}
 #tpanel.open{display:flex}
 #tpanel.vis2{opacity:1;transform:none}
 #tpanel .tbar{display:flex;gap:.45em;align-items:center;background:#0f1a10;padding:.5em .8em;border-bottom:1px solid #163a1f;color:#1d9c46;font:12px var(--mono)}
 #tpanel .tbar .d{width:10px;height:10px;border-radius:50%}
-#tpanel .tbar .x{margin-left:auto;cursor:pointer;color:#8be9b7;font-size:14px;padding:0 .3em}
+#tpanel .tbar .x{margin-left:auto;cursor:pointer;color:#8be9b7;font-size:14px;padding:.3em}
 #term{flex:1;overflow-y:auto;padding:.8em .9em;font:12.5px/1.5 var(--mono);color:#33ff66}
 #term .ln{white-space:pre-wrap;min-height:1.15em}
-#term::after{content:"";position:sticky;display:block}
 .g{color:#33ff66}.d{color:#1d9c46}.a{color:#ffcc4d}.r{color:#ff5555}.c{color:#5cf1ff}.w{color:#e8ffe8}
 .ok::before{content:"✔ ";color:#33ff66}
 .alert{animation:alertflash .5s steps(2) 6;font-weight:bold}
 @keyframes alertflash{0%{color:#ff5555}50%{color:#fff}}
 .trow{display:flex;align-items:center;background:#0f1a10;border-top:1px solid #163a1f;padding:.5em .8em;font:12.5px var(--mono)}
 .trow .p{color:#ffcc4d;margin-right:.5em;white-space:nowrap}
-#cmd{flex:1;background:transparent;border:none;outline:none;color:#e8ffe8;font:inherit;caret-color:#33ff66}
-@media(max-width:700px){.stats{grid-template-columns:repeat(2,1fr);margin-top:-1.8rem}}
+#cmd{flex:1;background:transparent;border:none;outline:none;color:#e8ffe8;font:inherit;caret-color:#33ff66;min-height:24px}
+@media(max-width:700px){.stats{grid-template-columns:repeat(2,1fr);margin-top:-1.8rem}#tpanel{height:min(430px,56vh)}}
 </style>
 </head>
 <body>
+<noscript><p style="max-width:960px;margin:0 auto;padding:1.2rem;font:15px/1.6 -apple-system,sans-serif;color:#1f2328">AgriNova is an open-source FPGA + Arduino + Telegram smart-farm system for small Indian farmers: instant hardware intruder detection, closed-loop irrigation, and alerts in English, Hindi and Telugu — about ₹2,500 in parts. This page uses JavaScript for its animations and live terminal demo; see the <a href="https://github.com/rohancodesss/agrinova" style="color:#2E8B57">GitHub repository</a> for full documentation.</p></noscript>
 
 <header class="hero" id="hero">
   <h1>🌿 <span id="typed">A farm that texts you back.</span><span class="cursor"></span></h1>
   <p class="sub">Open-source smart crop protection &amp; irrigation for small farmers — an FPGA that never sleeps, an Arduino that waters, and a Telegram bot you already know how to use.</p>
   <div class="badges">
     <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
-    <img src="https://img.shields.io/badge/Python-3.9+-3776AB?logo=python&logoColor=white" alt="Python">
+    <img src="https://img.shields.io/badge/Python-3.9+-3776AB?logo=python&amp;logoColor=white" alt="Python">
     <img src="https://img.shields.io/badge/Verilog-iCE40UP5K-orange" alt="Verilog iCE40">
-    <img src="https://img.shields.io/badge/Arduino-UNO-00979D?logo=arduino&logoColor=white" alt="Arduino UNO">
-    <img src="https://img.shields.io/badge/Telegram-Bot%20API-26A5E4?logo=telegram&logoColor=white" alt="Telegram Bot API">
+    <img src="https://img.shields.io/badge/Arduino-UNO-00979D?logo=arduino&amp;logoColor=white" alt="Arduino UNO">
+    <img src="https://img.shields.io/badge/Telegram-Bot%20API-26A5E4?logo=telegram&amp;logoColor=white" alt="Telegram Bot API">
   </div>
   <a class="btn pri" href="https://github.com/rohancodesss/agrinova">⭐ View on GitHub</a>
   <a class="btn sec" href="https://github.com/rohancodesss/agrinova/releases">⬇ Download v2.0</a>
@@ -142,7 +145,7 @@ footer a{color:#8be9b7}
   <div class="stat rv"><b data-count="2500" data-pre="₹">₹0</b><span>total parts cost</span></div>
   <div class="stat rv"><b>⚡ Instant</b><span>spots an intruder faster than a blink</span></div>
   <div class="stat rv"><b data-count="24" data-post="/7">0</b><span>watching, even if software crashes</span></div>
-  <div class="stat rv"><b data-count="4">0</b><span>languages — English · हिंदी · తెలుగు · Telugu</span></div>
+  <div class="stat rv"><b data-count="4">0</b><span>languages — English · <span lang="hi">हिंदी</span> · <span lang="te">తెలుగు</span> · Telugu</span></div>
   <div class="stat rv"><b data-count="10" data-post=" s">0</b><span>quiet gap between alerts — no phone spam</span></div>
   <div class="stat rv"><b data-count="0" data-pre="₹">₹0</b><span>per month — no app, no subscription</span></div>
 </div>
@@ -176,6 +179,8 @@ footer a{color:#8be9b7}
       <div class="sw"><span class="lamp off"></span>A2 = HIGH → switch open<br><span style="color:#5ea87e">mist gets no power · OFF</span></div>
       <div class="sw"><span class="lamp on"></span>A2 = LOW → switch closed<br><span style="color:#8be9b7">charger powers mist · ON</span></div>
     </div>
+    <img class="wiring" src="wiring_mist_relay_arduino.png" alt="Wiring diagram: Arduino pin to relay module to mist maker on its own wall charger" loading="lazy">
+    <span class="wiring-cap">the actual wiring — Arduino → relay → mist maker</span>
   </div>
 
   <div class="rules rv">
@@ -197,8 +202,8 @@ footer a{color:#8be9b7}
     <div class="card rv"><div class="ic">🚨</div><h3>Tamper alarm</h3><p>Camera yanked mid-recording? CRITICAL alert with the partial clip as evidence.</p></div>
     <div class="card rv"><div class="ic">💧</div><h3>Closed-loop irrigation</h3><p>Sprays when soil is dry, stops the <i>moment</i> the target moisture is reached — checked every 0.2 s.</p></div>
     <div class="card rv"><div class="ic">🌧</div><h3>Weather-aware</h3><p>Checks the forecast first. Rain likely in 6 h? Spray skipped, water saved, farmer told.</p></div>
-    <div class="card rv"><div class="ic">📊</div><h3>Data & graphs</h3><p>Every reading logged. <code>/graph</code> sends a 24 h chart, <code>/summary</code> a daily digest.</p></div>
-    <div class="card rv"><div class="ic">🌐</div><h3>Hindi &amp; Telugu support</h3><p>Alerts in हिंदी, తెలుగు, or Telugu in English letters — switch from chat with <code>/lang</code>.</p></div>
+    <div class="card rv"><div class="ic">📊</div><h3>Data &amp; graphs</h3><p>Every reading logged. <code>/graph</code> sends a 24 h chart, <code>/summary</code> a daily digest.</p></div>
+    <div class="card rv"><div class="ic">🌐</div><h3>Hindi &amp; Telugu support</h3><p>Alerts in <span lang="hi">हिंदी</span>, <span lang="te">తెలుగు</span>, or Telugu in English letters — switch from chat with <code>/lang</code>.</p></div>
     <div class="card rv"><div class="ic">🎛</div><h3>Button UI</h3><p><code>/menu</code> gives tappable buttons — no typing, no app to install, no subscription.</p></div>
     <div class="card rv"><div class="ic">🔁</div><h3>Self-healing</h3><p>USB dropouts, camera loss, network errors — everything reconnects and reports honestly.</p></div>
     <div class="card rv"><div class="ic">⏰</div><h3>Schedules</h3><p><code>/schedule 07:00 10</code> — daily sprays, persisted across restarts, rain-checked.</p></div>
@@ -252,9 +257,9 @@ footer a{color:#8be9b7}
   <div class="tbar">
     <span class="d" style="background:#ff5f57"></span><span class="d" style="background:#febc2e"></span><span class="d" style="background:#28c840"></span>
     <span style="margin-left:.5em">agri@farm — mac_bridge.py</span>
-    <span class="x" id="tclose">✕</span>
+    <span class="x" id="tclose" role="button" tabindex="0" aria-label="close terminal">✕</span>
   </div>
-  <div id="term"></div>
+  <div id="term" aria-live="polite"></div>
   <div class="trow"><span class="p">you@telegram:~$</span><input id="cmd" autocomplete="off" spellcheck="false" aria-label="type a command"></div>
 </div>
 
@@ -266,12 +271,14 @@ document.querySelectorAll('.rv').forEach(el => io.observe(el));
 
 /* ---------- hero typing ---------- */
 const lines = ['A farm that texts you back.','Detect. Deter. Irrigate.','FPGA + Arduino + Telegram.','नमस्ते, किसान मित्र! 🌾','నమస్కారం, రైతు మిత్రమా! 🌾'];
+const langs = ['en','en','en','hi','te'];
 const typed = document.getElementById('typed');
 (async function loop(){
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   await sleep(2200);
   for (let n = 1;; n++) {
     const s = lines[n % lines.length];
+    typed.setAttribute('lang', langs[n % langs.length]);
     for (let i = typed.textContent.length; i >= 0; i--) { typed.textContent = typed.textContent.slice(0,i); await sleep(16); }
     for (let i = 1; i <= s.length; i++) { typed.textContent = s.slice(0,i); await sleep(46); }
     await sleep(2600);
@@ -319,8 +326,14 @@ function openT(){ panel.classList.add('open'); requestAnimationFrame(()=>panel.c
 function closeT(){ panel.classList.remove('vis2'); setTimeout(()=>panel.classList.remove('open'),250); }
 btn.onclick = () => panel.classList.contains('open') ? closeT() : openT();
 document.getElementById('tclose').onclick = closeT;
+document.getElementById('tclose').onkeydown = e => { if (e.key==='Enter'||e.key===' ') closeT(); };
 document.getElementById('heroTerm').onclick = e => { e.preventDefault(); openT(); };
 document.getElementById('chatTerm').onclick = e => { e.preventDefault(); openT(); };
+document.addEventListener('click', e => {
+  if (!panel.classList.contains('open')) return;
+  if (panel.contains(e.target) || btn.contains(e.target)) return;
+  closeT();
+});
 
 function ln(html, cls) { const d = document.createElement('div'); d.className='ln'+(cls?' '+cls:''); d.innerHTML=html; term.appendChild(d); term.scrollTop=term.scrollHeight; return d; }
 async function type(text, cls, cps=300) { const d=ln('',cls); for(let i=1;i<=text.length;i++){d.textContent=text.slice(0,i);term.scrollTop=term.scrollHeight;await sleep(1000/cps);} return d; }
@@ -341,7 +354,7 @@ async function graph(){ const bars='▂▃▄▅▆▇█'; let r=''; for(let i=
 const cmds={
  help(){ln('<span class="w">commands:</span> <span class="c">/status /photo /graph /lockdown /unlock /intruder /mist on|off /spray /weather /lang hi|te|te_en|en about source clear</span>');},
  about(){ln('<span class="a">AgriNova</span> — FPGA reflex (µs, can\'t crash) + Arduino hands + Python brain. ~₹2,500 · MIT.');},
- source(){ln('<span class="c">→ github.com/rohancodesss/agrinova</span>');window.open('https://github.com/rohancodesss/agrinova','_blank');},
+ source(){ln('<span class="c">→ github.com/rohancodesss/agrinova</span>');window.open('https://github.com/rohancodesss/agrinova','_blank','noopener');},
  clear(){term.innerHTML='';},
  '/status'(){ln(`📡 ${now()}`);ln('<span class="ok"></span>FPGA <span class="ok"></span>Arduino <span class="ok"></span>Camera');ln(`🌱 <span class="a">${soil()}%</span> (DRY) 🌡️ ${temp()}°C 💧 ${hum()}%`);ln(`💨 ${mist?'ON':'OFF'} · 🔒 ${lockdown?'<span class="r">ON</span>':'OFF'} · 🌐 ${lang}`);},
  '/photo':photo,'/graph':graph,
