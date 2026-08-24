@@ -104,6 +104,7 @@ HELP_TEXT = (
     "⚙️ Other\n"
     "/lang — language: English / हिंदी / తెలుగు / Telugu (English)\n"
     "/rotate  /rotate_stop — servo\n"
+    "/setup — guided setup wizard (5 questions)\n"
     "/menu — button keyboard\n"
     "/about — project info\n"
     "/stop — shut the bridge down (asks 3 times)"
@@ -1135,7 +1136,8 @@ ALIASES = {
     "/rain skip on": "/rain_skip on", "/rain skip off": "/rain_skip off",
     "/rainskip on": "/rain_skip on", "/rainskip off": "/rain_skip off",
     "/forecast": "/weather",
-    "/start": "/help", "/keyboard": "/menu", "/buttons": "/menu",
+    "/start": "/setup_or_help", "/keyboard": "/menu", "/buttons": "/menu",
+    "/wizard": "/setup", "/settings": "/setup",
     "/language": "/lang", "/telugu": "/lang te", "/english": "/lang en",
     "/hindi": "/lang hi",
     "/msgs": "/messages", "/message": "/messages",
@@ -1194,12 +1196,89 @@ def normalise(text):
     return ALIASES.get(text, text)
 
 
+# ---------------------------------------------------------------------------
+# /setup wizard: one question at a time, answered with buttons.
+# ---------------------------------------------------------------------------
+SETUP_STEPS = [
+    {"key": "lang",
+     "q": "1/5 🌐 Which language for alerts?\nभाषा चुनें / భాషను ఎంచుకోండి:",
+     "opts": [("English", "en"), ("हिंदी", "hi"), ("తెలుగు", "te"), ("Telugu (English)", "te_en")]},
+    {"key": "lockdown",
+     "q": "2/5 🔒 Arm intruder alerts now?\nWhen armed: IR trigger → alert + photo + video + mist burst.",
+     "opts": [("🔒 Arm now", "on"), ("🔓 Keep off (arm later with /lockdown)", "off")]},
+    {"key": "auto_mist",
+     "q": "3/5 🤖 Water automatically when the soil is dry?\nMist runs until the soil reads wet again (max 4 starts/hour).",
+     "opts": [("💧 Yes, auto-water", "on"), ("✋ No, I'll use /spray myself", "off")]},
+    {"key": "rain_skip",
+     "q": "4/5 🌧 Skip watering when rain is coming?\nChecks the forecast before every spray.",
+     "opts": [("🌧 Yes, save water", "on"), ("🚿 No, always spray", "off")]},
+    {"key": "daily_msgs",
+     "q": "5/5 ✉️ How many routine updates per day?\n(Alarms — intruders, camera removed — are ALWAYS sent.)",
+     "opts": [("10/day", "10"), ("30/day", "30"), ("60/day", "60"), ("Unlimited", "0")]},
+]
+setup_idx = [None]  # None = wizard not running
+
+
+def setup_send_step():
+    i = setup_idx[0]
+    if i is None:
+        return
+    if i >= len(SETUP_STEPS):
+        setup_idx[0] = None
+        with settings_lock:
+            st = dict(settings)
+        lang_names = {"en": "English", "hi": "हिंदी", "te": "తెలుగు", "te_en": "Telugu (English)"}
+        send_telegram_message(
+            "✅ Setup complete!\n"
+            f"🌐 Language: {lang_names.get(st['lang'], st['lang'])}\n"
+            f"🔒 Lockdown: {'ON' if st['lockdown'] else 'OFF'}\n"
+            f"🤖 Auto-mist: {'ON' if st['auto_mist'] else 'OFF'}\n"
+            f"🌧 Rain-skip: {'ON' if st['rain_skip'] else 'OFF'}\n"
+            f"✉️ Messages: {st['daily_msgs'] or 'unlimited'}/day\n"
+            f"📍 Weather location: {st['location'] or 'not set — send /weather set <your city>'}\n\n"
+            "Change any answer any time — /setup runs again, or use the single commands. /help lists them.")
+        return
+    step = SETUP_STEPS[i]
+    rows, row = [], []
+    for label, val in step["opts"]:
+        row.append({"text": label, "callback_data": f"/setup pick {val}"})
+        if len(row) == 2 or len(label) > 22:
+            rows.append(row); row = []
+    if row:
+        rows.append(row)
+    rows.append([{"text": "⏭ Skip", "callback_data": "/setup pick skip"},
+                 {"text": "✖ Cancel setup", "callback_data": "/setup cancel"}])
+    send_telegram_message(step["q"], reply_markup={"inline_keyboard": rows})
+
+
+def setup_apply(val):
+    step = SETUP_STEPS[setup_idx[0]]
+    key = step["key"]
+    if val != "skip":
+        with settings_lock:
+            if key == "lang":
+                settings["lang"] = val
+            elif key == "daily_msgs":
+                settings["daily_msgs"] = int(val)
+            else:
+                settings[key] = (val == "on")
+        save_settings()
+    setup_idx[0] += 1
+    setup_send_step()
+
+
 def handle_command(text):
     """Run one normalised command. Safe to call from the poll loop or a button."""
     parts = text.split()
     cmd = parts[0] if parts else ""
     arg = parts[1] if len(parts) > 1 else None
 
+    if cmd == "/setup_or_help":
+        if not os.path.exists(STATE_FILE):
+            handle_command("/setup")
+        else:
+            handle_command("/help")
+        return
     if cmd == "/help":
         send_telegram_message(HELP_TEXT)
     elif cmd == "/menu":
@@ -1268,6 +1347,17 @@ def handle_command(text):
             send_telegram_message(f"✅ Water (wet) calibration = {raw}. Soil % now uses your calibration.")
         else:
             send_telegram_message("Usage: /calibrate air | water | reset")
+    elif cmd == "/setup":
+        if arg == "pick" and setup_idx[0] is not None and len(parts) > 2:
+            setup_apply(parts[2])
+        elif arg == "cancel":
+            setup_idx[0] = None
+            send_telegram_message("Setup cancelled — nothing else changed. Run /setup anytime.")
+        else:
+            setup_idx[0] = 0
+            send_telegram_message("🌿 Welcome to AgriNova setup! 5 quick questions — tap an answer, "
+                                  "Skip keeps the current value.")
+            setup_send_step()
     elif cmd == "/messages":
         with settings_lock:
             limit = settings.get("daily_msgs", 30)
