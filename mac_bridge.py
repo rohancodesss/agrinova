@@ -98,7 +98,7 @@ HELP_TEXT = (
     "/calibrate air|water — set soil calibration\n"
     "/weather — forecast (wttr.in)\n"
     "/weather set <city> — set location\n"
-    "/rain_skip on|off — skip sprays if rain likely\n"
+    "/rain_skip on|off — skip SCHEDULED sprays if rain likely\n"
     "\n"
     "⚙️ Other\n"
     "/lang — language: English / हिंदी / తెలుగు / Telugu (English)\n"
@@ -919,14 +919,9 @@ def auto_mist_loop():
             continue  # soil is moist enough — nothing to do
         if mist_burst_busy.locked():
             continue
-        skip, why = rain_expected()
         with state_lock:
             state["auto_mist_times"].append(time.time())
             state["dry_since"] = time.time()  # restart the dry timer after a spray
-        if skip:
-            send_routine(msg("rain_skipped", why=why), force=True)
-            log_event("AUTO_MIST_SKIPPED_RAIN", why)
-            continue
         send_routine(msg("auto_mist_start", m=moisture, tgt=AUTO_MIST_WET_PCT), force=True)
         threading.Thread(target=mist_burst, args=(AUTO_MIST_MAX_SECONDS, "auto", True), daemon=True).start()
 
@@ -1206,7 +1201,7 @@ SETUP_STEPS = [
      "q": "3/5 🤖 Water automatically when the soil is dry?\nSprays when soil drops below 30%, stops at 40%.",
      "opts": [("💧 Yes, auto-water", "on"), ("✋ No, I'll use /spray myself", "off")]},
     {"key": "rain_skip",
-     "q": "4/5 🌧 Skip watering when rain is coming?\nChecks the forecast before every spray.",
+     "q": "4/5 🌧 Skip SCHEDULED watering when rain is coming?\nAuto-mist always follows the soil sensor.",
      "opts": [("🌧 Yes, save water", "on"), ("🚿 No, always spray", "off")]},
     {"key": "daily_msgs",
      "q": "5/5 ✉️ How many routine updates per day?\n(Alarms — intruders, camera removed — are ALWAYS sent.)",
@@ -1416,7 +1411,7 @@ def handle_command(text):
         if arg in ("on", "off"):
             settings["rain_skip"] = arg == "on"
             save_settings()
-            send_telegram_message(f"🌧 Rain-skip {'ON — sprays are skipped when rain chance ≥ ' + str(RAIN_SKIP_CHANCE) + '%' if arg == 'on' else 'OFF'}.")
+            send_telegram_message(f"🌧 Rain-skip {'ON — scheduled sprays are skipped when rain chance ≥ ' + str(RAIN_SKIP_CHANCE) + '%' if arg == 'on' else 'OFF'}. Auto-mist always follows the soil sensor.")
         else:
             send_telegram_message(f"🌧 Rain-skip is {'ON' if settings['rain_skip'] else 'OFF'}. Usage: /rain_skip on|off")
     elif cmd == "/lockdown":
