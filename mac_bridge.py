@@ -205,16 +205,16 @@ MSGS = {
         "te_en": "⚠️ Nela sthithi maarindi! ",
     },
     "auto_mist_start": {
-        "hi": "🤖 ऑटो सिंचाई: मिट्टी {m}% → ≤{tgt}% होने तक मिस्ट ({n}/{max} इस घंटे)",
-        "en": "🤖 Auto-irrigation: soil {m}% → misting until it reads ≤{tgt}% ({n}/{max} this hour)",
-        "te": "🤖 ఆటో నీటిపారుదల: నేల {m}% → ≤{tgt}% అయ్యే వరకు మిస్ట్ ({n}/{max} ఈ గంటలో)",
-        "te_en": "🤖 Auto neeti paarudala: nela {m}% → ≤{tgt}% ayye varaku mist ({n}/{max} ee gantalo)",
+        "hi": "🤖 ऑटो सिंचाई: मिट्टी {m}% → ≥{tgt}% होने तक मिस्ट ({n}/{max} इस घंटे)",
+        "en": "🤖 Auto-irrigation: soil {m}% → misting until it reads ≥{tgt}% ({n}/{max} this hour)",
+        "te": "🤖 ఆటో నీటిపారుదల: నేల {m}% → ≥{tgt}% అయ్యే వరకు మిస్ట్ ({n}/{max} ఈ గంటలో)",
+        "te_en": "🤖 Auto neeti paarudala: nela {m}% → ≥{tgt}% ayye varaku mist ({n}/{max} ee gantalo)",
     },
     "mist_stopped_wet": {
-        "hi": "💧 मिट्टी {m}% पर पहुँची (≤{tgt}%) — {s} सेकंड बाद मिस्ट बंद।",
-        "en": "💧 Soil reached {m}% (≤{tgt}%) — mist stopped after {s}s.",
-        "te": "💧 నేల {m}% కి చేరింది (≤{tgt}%) — {s} సెకన్లకు మిస్ట్ ఆగింది.",
-        "te_en": "💧 Nela {m}% ki cherindi (≤{tgt}%) — {s} seconds ki mist aagindi.",
+        "hi": "💧 मिट्टी {m}% पर पहुँची (≥{tgt}%) — {s} सेकंड बाद मिस्ट बंद।",
+        "en": "💧 Soil reached {m}% (≥{tgt}%) — mist stopped after {s}s.",
+        "te": "💧 నేల {m}% కి చేరింది (≥{tgt}%) — {s} సెకన్లకు మిస్ట్ ఆగింది.",
+        "te_en": "💧 Nela {m}% ki cherindi (≥{tgt}%) — {s} seconds ki mist aagindi.",
     },
     "camera_removed": {
         "hi": "🚨 [आपातकाल]: कैमरा ज़बरदस्ती निकाला गया — {t}",
@@ -632,7 +632,8 @@ def set_mist_state(on):
 mist_burst_busy = threading.Lock()
 
 
-AUTO_MIST_STOP_PCT = 30            # auto-mist stops once soil reads this % or less
+AUTO_MIST_START_PCT = 30           # auto-mist starts when soil % falls below this
+AUTO_MIST_WET_PCT = 40             # ...and stops once soil % reaches this (hysteresis)
 AUTO_MIST_MAX_SECONDS = 600        # hard safety cap (10 min) so a dead sensor cannot run the mist forever
 
 
@@ -649,13 +650,13 @@ def mist_burst(seconds, reason="", stop_when_wet=False):
             stopped_wet = False
             while time.time() - t0 < seconds:
                 time.sleep(0.2)
-                if stop_when_wet and state["moisture"] is not None and state["moisture"] <= AUTO_MIST_STOP_PCT:
+                if stop_when_wet and state["moisture"] is not None and state["moisture"] >= AUTO_MIST_WET_PCT:
                     stopped_wet = True
                     break
             arduino_send("MIST_OFF")
             set_mist_state(False)
             if stopped_wet:
-                send_routine(msg("mist_stopped_wet", m=state["moisture"], tgt=AUTO_MIST_STOP_PCT,
+                send_routine(msg("mist_stopped_wet", m=state["moisture"], tgt=AUTO_MIST_WET_PCT,
                                  s=f"{time.time() - t0:.1f}"), force=True)
                 log_event("MIST_STOPPED_WET", f"{time.time() - t0:.1f}s")
     finally:
@@ -916,8 +917,8 @@ def auto_mist_loop():
             fresh = time.time() - state["last_reading"] < 60
         if not fresh or mist_on or moisture is None:
             continue
-        if moisture <= AUTO_MIST_STOP_PCT:
-            continue  # already at/below target — nothing to do
+        if moisture >= AUTO_MIST_START_PCT:
+            continue  # soil is moist enough — nothing to do
         if len(recent) >= AUTO_MIST_MAX_PER_HOUR:
             continue
         if mist_burst_busy.locked():
@@ -930,7 +931,7 @@ def auto_mist_loop():
             send_routine(msg("rain_skipped", why=why), force=True)
             log_event("AUTO_MIST_SKIPPED_RAIN", why)
             continue
-        send_routine(msg("auto_mist_start", m=moisture, tgt=AUTO_MIST_STOP_PCT,
+        send_routine(msg("auto_mist_start", m=moisture, tgt=AUTO_MIST_WET_PCT,
                          n=len(recent) + 1, max=AUTO_MIST_MAX_PER_HOUR), force=True)
         threading.Thread(target=mist_burst, args=(AUTO_MIST_MAX_SECONDS, "auto", True), daemon=True).start()
 
@@ -1207,7 +1208,7 @@ SETUP_STEPS = [
      "q": "2/5 🔒 Arm intruder alerts now?\nWhen armed: IR trigger → alert + photo + video + mist burst.",
      "opts": [("🔒 Arm now", "on"), ("🔓 Keep off (arm later with /lockdown)", "off")]},
     {"key": "auto_mist",
-     "q": "3/5 🤖 Water automatically when the soil is dry?\nMist runs until the soil reads wet again (max 4 starts/hour).",
+     "q": "3/5 🤖 Water automatically when the soil is dry?\nSprays when soil drops below 30%, stops at 40% (max 4 starts/hour).",
      "opts": [("💧 Yes, auto-water", "on"), ("✋ No, I'll use /spray myself", "off")]},
     {"key": "rain_skip",
      "q": "4/5 🌧 Skip watering when rain is coming?\nChecks the forecast before every spray.",
@@ -1543,7 +1544,7 @@ def handle_command(text):
                 log_event("AUTO_MIST", arg)
                 send_telegram_message(
                     f"🤖 Auto-mist {'ON' if want else 'OFF'}"
-                    + (f" — mists whenever soil is above {AUTO_MIST_STOP_PCT}% and stops once it reads ≤{AUTO_MIST_STOP_PCT}%, max {AUTO_MIST_MAX_PER_HOUR}/h." if want else "."))
+                    + (f" — mists when soil falls below {AUTO_MIST_START_PCT}% and stops once it reads ≥{AUTO_MIST_WET_PCT}%, max {AUTO_MIST_MAX_PER_HOUR}/h." if want else "."))
         else:
             send_telegram_message(f"🤖 Auto-mist is {'ON' if settings['auto_mist'] else 'OFF'}. Usage: /auto_mist on|off")
     elif cmd == "/schedule":
