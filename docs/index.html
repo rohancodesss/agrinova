@@ -37,8 +37,10 @@ a:focus-visible,button:focus-visible,input:focus-visible,.btn:focus-visible{outl
 .hero h1 .cursor{display:inline-block;width:.55ch;background:#7ee2a8;height:1em;vertical-align:-.12em;animation:blink 1s steps(1) infinite;margin-left:2px}
 @keyframes blink{50%{opacity:0}}
 .hero .sub{margin:.9rem auto 1.6rem;max-width:620px;color:#b8e6cb;font-size:1.1rem}
-.badges{display:flex;gap:.4rem;justify-content:center;flex-wrap:wrap;margin-bottom:1.8rem}
-.badges img{height:20px}
+.badges{display:flex;gap:.45rem;justify-content:center;flex-wrap:wrap;margin-bottom:1.8rem}
+.tag2{display:inline-flex;height:22px;border-radius:4px;overflow:hidden;font:600 11.5px/22px -apple-system,"Segoe UI",Roboto,sans-serif;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.tag2 .k{background:#555;color:#fff;padding:0 .55em}
+.tag2 .v{color:#fff;padding:0 .55em}
 .btn{display:inline-block;padding:.82em 1.5em;border-radius:10px;font-weight:600;margin:.3em;transition:transform .15s, box-shadow .15s}
 .btn:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(0,0,0,.28);text-decoration:none}
 .btn.pri{background:#fff;color:var(--green-d)}
@@ -130,11 +132,16 @@ footer a{color:#8be9b7}
   <h1>🌿 <span id="typed">A farm that texts you back.</span><span class="cursor"></span></h1>
   <p class="sub">Open-source smart crop protection &amp; irrigation for small farmers — an FPGA that never sleeps, an Arduino that waters, and a Telegram bot you already know how to use.</p>
   <div class="badges">
-    <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
-    <img src="https://img.shields.io/badge/Python-3.9+-3776AB?logo=python&amp;logoColor=white" alt="Python">
-    <img src="https://img.shields.io/badge/Verilog-iCE40UP5K-orange" alt="Verilog iCE40">
-    <img src="https://img.shields.io/badge/Arduino-UNO-00979D?logo=arduino&amp;logoColor=white" alt="Arduino UNO">
-    <img src="https://img.shields.io/badge/Telegram-Bot%20API-26A5E4?logo=telegram&amp;logoColor=white" alt="Telegram Bot API">
+    <span class="tag2"><span class="k">License</span><span class="v" style="background:#4c1">MIT</span></span>
+    <span class="tag2"><span class="k">Python</span><span class="v" style="background:#3776AB">3.9+</span></span>
+    <span class="tag2"><span class="k">Verilog</span><span class="v" style="background:#e05d44">iCE40UP5K</span></span>
+    <span class="tag2"><span class="k">Arduino</span><span class="v" style="background:#00979D">UNO</span></span>
+    <span class="tag2"><span class="k">Telegram</span><span class="v" style="background:#26A5E4">Bot API</span></span>
+    <span class="tag2"><span class="k">C++</span><span class="v" style="background:#00599C">AVR</span></span>
+    <span class="tag2"><span class="k">Cost</span><span class="v" style="background:#2E8B57">~₹2,500</span></span>
+    <span class="tag2"><span class="k">Languages</span><span class="v" style="background:#7d3ac1">EN · HI · TE</span></span>
+    <span class="tag2"><span class="k">Made in</span><span class="v" style="background:#e07b00">India 🇮🇳</span></span>
+    <span class="tag2"><span class="k">PRs</span><span class="v" style="background:#8a2be2">welcome</span></span>
   </div>
   <a class="btn pri" href="https://github.com/rohancodesss/agrinova">⭐ View on GitHub</a>
   <a class="btn sec" href="https://github.com/rohancodesss/agrinova/releases">⬇ Download v2.0</a>
