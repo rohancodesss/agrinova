@@ -13,7 +13,9 @@ import io
 import json
 import os
 import queue
+import re
 import serial
+import subprocess
 import sys
 import threading
 import time
@@ -501,10 +503,103 @@ camera_client_seen = [0.0]
 
 
 def camera_online():
+    """True when the Windows VM camera client is polling us."""
     return time.time() - camera_client_seen[0] < CAMERA_OFFLINE_AFTER
 
 
+# ---------------------------------------------------------------------------
+# Local (Mac) camera — used automatically when no Windows client is connected.
+# First capture triggers macOS's one-time camera permission prompt for the
+# terminal running the bridge.
+# ---------------------------------------------------------------------------
+LOCAL_CAM_HINT = "C170"           # preferred device-name substring
+local_cam = {"video": None, "audio": None, "checked": 0.0}
+
+
+def detect_local_camera():
+    """Find an avfoundation video (and audio) device. Cached for 60 s."""
+    if time.time() - local_cam["checked"] < 60:
+        return local_cam["video"]
+    local_cam["checked"] = time.time()
+    try:
+        r = subprocess.run(["ffmpeg", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
+                           capture_output=True, text=True, timeout=15)
+        out = r.stderr or ""
+        section = None
+        video, audio, first_video = None, None, None
+        for line in out.splitlines():
+            if "video devices" in line:
+                section = "v"; continue
+            if "audio devices" in line:
+                section = "a"; continue
+            m = re.search(r"\[(\d+)\] (.+)$", line)
+            if not m:
+                continue
+            idx, name = m.group(1), m.group(2)
+            if section == "v":
+                if first_video is None and "Capture screen" not in name:
+                    first_video = name
+                if LOCAL_CAM_HINT.lower() in name.lower():
+                    video = name
+            elif section == "a" and audio is None and LOCAL_CAM_HINT.lower() in name.lower():
+                audio = name
+        local_cam["video"] = video or first_video
+        local_cam["audio"] = audio
+        if local_cam["video"]:
+            print(f"[camera] local device: {local_cam['video']!r} audio: {local_cam['audio']!r}")
+    except Exception as e:
+        print(f"[camera] local detection failed: {e}", file=sys.stderr)
+        local_cam["video"] = None
+    return local_cam["video"]
+
+
+def local_capture(kind, duration=5):
+    """Capture photo/video bytes with the Mac's own camera via ffmpeg."""
+    dev = detect_local_camera()
+    if not dev:
+        print("[camera] no local camera found", file=sys.stderr)
+        return None
+    out = os.path.join(BASE_DIR, "local_capture.jpg" if kind == "photo" else "local_capture.mp4")
+    try:
+        if os.path.exists(out):
+            os.remove(out)
+    except OSError:
+        pass
+    src = dev if kind == "photo" or not local_cam["audio"] else f"{dev}:{local_cam['audio']}"
+    if kind == "photo":
+        cmd = ["ffmpeg", "-y", "-f", "avfoundation", "-framerate", "30", "-video_size", "640x480",
+               "-i", src, "-frames:v", "1", "-q:v", "4", out]
+        tmo = 25
+    else:
+        cmd = ["ffmpeg", "-y", "-f", "avfoundation", "-framerate", "30", "-video_size", "640x480",
+               "-i", src, "-t", str(duration), "-c:v", "libx264", "-preset", "ultrafast"]
+        cmd += (["-c:a", "aac"] if ":" in src else []) + [out]
+        tmo = duration + 25
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=tmo)
+        if (r.returncode != 0 or not os.path.exists(out)) and ":" in src:
+            # audio device failed — retry video-only
+            cmd = [c for c in cmd if c != "-c:a" and c != "aac"]
+            cmd[cmd.index("-i") + 1] = dev
+            r = subprocess.run(cmd, capture_output=True, timeout=tmo)
+        if os.path.exists(out) and os.path.getsize(out) > 0:
+            with open(out, "rb") as f:
+                data = f.read()
+            print(f"[camera] local {kind} OK ({len(data)} bytes)")
+            return data
+        print(f"[camera] local {kind} failed: {(r.stderr or b'')[-200:]!r}", file=sys.stderr)
+    except subprocess.TimeoutExpired:
+        print("[camera] local capture timed out — check camera permission for the terminal "
+              "(System Settings → Privacy & Security → Camera)", file=sys.stderr)
+    except Exception as e:
+        print(f"[camera] local capture error: {e}", file=sys.stderr)
+    return None
+
+
 def request_capture(kind, duration=None, timeout=60):
+    # No Windows client connected? Capture on the Mac itself.
+    if not camera_online():
+        return local_capture(kind, duration or 5)
     job_id = str(int(time.time() * 1000))
     ev = threading.Event()
     with camera_results_lock:
@@ -584,15 +679,21 @@ def camera_heartbeat():
                 was_online = True
             elif time.time() - START_TIME > CAMERA_OFFLINE_AFTER:
                 was_online = False
-                send_telegram_message("📷 Camera service offline — start camera_service.py on Windows.")
+                if detect_local_camera():
+                    print("[camera] no Windows client — using the Mac's local camera")
+                else:
+                    send_telegram_message("📷 No camera anywhere — plug the webcam into the Mac or start camera_service.py on Windows.")
             continue
         if online != was_online:
             was_online = online
             if online:
-                send_telegram_message("📷 Camera service back online.")
+                send_telegram_message("📷 Windows camera service back online — using it for captures.")
                 log_event("CAMERA_ONLINE")
             else:
-                send_telegram_message("📷 Camera service offline (no poll from Windows for 60 s).")
+                if detect_local_camera():
+                    send_telegram_message("📷 Windows camera offline — switching to the Mac's own camera.")
+                else:
+                    send_telegram_message("📷 Camera service offline and no local camera found.")
                 log_event("CAMERA_OFFLINE")
 
 
@@ -993,7 +1094,9 @@ def build_status():
     lines = [f"📡 AgriNova status — {time.strftime('%H:%M:%S')}",
              f"⏱ Uptime: {fmt_duration(time.time() - START_TIME)}",
              "",
-             f"{yn(s['fpga_connected'])} FPGA   {yn(s['arduino_connected'])} Arduino   {yn(camera_online())} Camera",
+             f"{yn(s['fpga_connected'])} FPGA   {yn(s['arduino_connected'])} Arduino   "
+             + (f"✅ Camera (Windows VM)" if camera_online()
+                else (f"✅ Camera (Mac: {local_cam['video']})" if detect_local_camera() else "❌ Camera")),
              ""]
     if s["moisture"] is not None:
         lines.append(f"🌱 Soil: {s['moisture']}% ({'WET' if s['wet'] else 'DRY'})"
@@ -1447,10 +1550,10 @@ def handle_command(text):
             save_settings()
             send_telegram_message(CONTINUE_TEXT)
     elif cmd in ("/photo", "/snapshot"):
-        if not camera_online():
-            send_telegram_message("📷 Camera service is offline — start camera_service.py on Windows.")
+        if not camera_online() and not detect_local_camera():
+            send_telegram_message("📷 No camera found — plug the webcam into the Mac (or start the Windows service).")
             return
-        send_telegram_message("Capturing photo from Windows...")
+        send_telegram_message("Capturing photo..." if not camera_online() else "Capturing photo from Windows...")
         photo_bytes = request_capture("photo", timeout=45)
         if photo_bytes:
             cap = readings_caption() if cmd == "/snapshot" else f"AgriNova snapshot — {now_str()}"
@@ -1464,10 +1567,10 @@ def handle_command(text):
             send_telegram_message("Usage: /video [duration]\nExample: /video 5 (default 5, max 30)")
             return
         duration = max(1, min(30, duration))
-        if not camera_online():
-            send_telegram_message("📷 Camera service is offline — start camera_service.py on Windows.")
+        if not camera_online() and not detect_local_camera():
+            send_telegram_message("📷 No camera found — plug the webcam into the Mac (or start the Windows service).")
             return
-        send_telegram_message(f"Recording {duration}s video from Windows...")
+        send_telegram_message(f"Recording {duration}s video...")
         video_bytes = request_capture("video", duration=duration, timeout=duration + 60)
         if video_bytes:
             send_telegram_video(video_bytes, caption=f"AgriNova video ({duration}s) — {now_str()}", duration_seconds=duration)
