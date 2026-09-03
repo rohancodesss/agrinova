@@ -81,11 +81,11 @@ AgriNova turns a small farm plot into something that **watches, waters, and repo
 | 🔒 | **Intruder detection** | IR → FPGA edge-detect (µs) → alert + photo (~2 s) + 5 s video + mist deterrent |
 | 🚨 | **Tamper alarm** | Camera yanked mid-recording → `CRITICAL` alert + partial clip as evidence |
 | 💧 | **Closed-loop irrigation** | Sprays when soil is dry, stops **the moment** the target moisture is reached |
-| 🌦 | **Weather-aware** | Checks wttr.in first — rain coming in 6 h? Spray skipped, water saved |
+| 🌦 | **Weather-aware** | Scheduled sprays check wttr.in — rain in 6 h? Skipped. Auto-mist always follows the soil sensor |
 | ⏰ | **Schedules** | `/schedule 07:00 10` — daily sprays, persisted across restarts |
 | 📊 | **Data** | Every reading logged to CSV · `/graph` 24 h chart · `/summary` daily digest |
-| 📷 | **Camera** | `/photo`, `/video 15`, `/snapshot` (photo + live readings) with audio |
-| 🎛 | **Button UI** | `/menu` — inline keyboard, no typing needed |
+| 📷 | **Camera** | `/photo`, `/video 15`, `/snapshot` with audio — Windows node if present, else captured directly on the Mac (no Windows needed) |
+| 🎛 | **Button UI** | `/menu` buttons · `/setup` five-question wizard · `/messages N` daily update budget (alarms always sent) |
 | 🛡 | **Hardened** | Chat-ID allowlist · 3-step confirmed shutdown · offline/online notifications for every device |
 | 🔁 | **Self-healing** | USB dropouts, camera loss, network errors — everything reconnects automatically |
 
@@ -122,6 +122,7 @@ AgriNova: 💧 Soil reached 29% — mist stopped after 41.2s
 | `/graph` · `/summary` · `/intruders` · `/soil_raw` | Data & logs |
 | `/menu` | Inline button panel |
 | `/mute` / `/unmute` · `/stop` (3× confirm) | Alert control · shutdown |
+| `/setup` · `/messages [n]` | Guided setup wizard · routine-messages-per-day budget |
 
 Commands are case-insensitive; `/mist off`, `/MIST_OFF` and `/mistoff` all work.
 </details>
@@ -184,7 +185,7 @@ arduino-cli upload  --fqbn arduino:avr:uno -p /dev/cu.usbmodem* agrinova_soil_se
 python3 -u mac_bridge.py          # or ./install_service.sh install (launchd)
 ```
 
-**4 · Camera node** (optional, Windows) — `python windows/camera_service.py`
+**4 · Camera** — plug any UVC webcam into the Mac and you're done (captures locally via ffmpeg). The Windows node (`python windows/camera_service.py`) is optional; when it polls in, it takes over captures.
 
 Then open Telegram and send `/help`. 🎉
 
