@@ -223,5 +223,7 @@ Issues and PRs welcome — this is a student project built to be reproduced. Goo
 
 **Built with** Verilog · Python · Arduino C++ · FFmpeg · OpenCV · Telegram Bot API · wttr.in
 
+**Contact:** [agrinova@duck.com](mailto:agrinova@duck.com)
+
 *If this helped you, ⭐ the repo.*
 </div>
