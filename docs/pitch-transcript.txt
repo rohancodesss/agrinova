@@ -1,0 +1,92 @@
+AGRINOVA — PURPLE UMBRELLA FESTIVAL 2026
+Corrected transcript of the stage pitch (reconstructed from the two venue recordings;
+audio was rough — garbled phrases straightened into what was actually said/meant.)
+Speakers: AgriNova Team. Combined length ~5:50.
+
+================ PART 1 — THE OPENING (clip 2, 2:25) ================
+
+Seventy percent.
+Seventy percent of the world's fresh water is used for agriculture. Yet small farms
+still irrigate on guesswork — watering by habit, not by need.
+
+Most farmers can't watch their crops overnight. Animals walk in, crops get destroyed,
+and the farmer only finds out the next day when they come back to check the state of
+the crops. By the end of the month, that's a lot of wasted water — and lost crops.
+
+[next slide]
+
+So — what if there was a system that could guard a farm, and water it automatically,
+for less than 2,500 rupees?
+
+[next slide]
+
+It's real. And we built it.
+
+[next slide]
+
+AgriNova is our answer. A farm that texts you back.
+
+AgriNova is an open-source project dedicated to helping farmers monitor their farm
+remotely — wherever they are. We don't use a proprietary app that works only with our
+system and needs a learning curve. We use Telegram. Telegram is as simple as WhatsApp —
+simple chatting. The farmer already knows how to use it.
+
+================ PART 2 — HOW IT WORKS TO CLOSE (clip 1, 3:26) ================
+
+Now let me show you how it works. It's built in three parts: the reflex, the hands,
+and the brain.
+
+THE REFLEX — the reflex is pure hardware. It watches the IR sensor and it cannot
+crash, it cannot hang — even if every other computer in the system fails, you still
+get motion detection from the IR sensor, because the logic is burned into the chip.
+
+THE HANDS — the hands are an Arduino microcontroller. It reads all the sensor data
+every second and packages it into one format for the brain.
+
+THE BRAIN — the brain is a Python program. It takes all of this data, processes it,
+and runs the Telegram bot, the camera, and the graphs.
+
+[next slide]
+
+Now let's look at the numbers. It's built for the smallest farmers: about 2,500
+rupees — a fraction of the cost of commercial systems. Under 10 seconds from
+something entering your farm to the alert, photo and video being sent to your phone.
+And around 67 percent less water — that number is PREDICTED; the field trial is our
+next step, and after we've performed the field trial we'll have the complete number
+of how much water is saved. There's no app, there's no subscription, and it talks to
+you in English, Hindi and Telugu.
+
+[next slide]
+
+You might ask — where is the AI? This year's theme is AI and Climate. We chose not
+to use it. The responsible use of AI is knowing when not to use it. AI data centres
+are not eco-friendly, and farms don't have a stable internet connection to keep a
+connection to a server. We could use on-device AI, but it doesn't improve things
+significantly here. Farm decisions are time-critical — we can't wait for a model to
+answer and then check it for hallucinations. That's why there's no AI in the system.
+
+[next slide]
+
+Now let's take a look at the physical prototype.
+
+This is the front view of our model. You can see the camera on the pole, so the
+farmer can get a photo or video of the farm. We've also included a solar panel — if
+wall power isn't available, it can switch to solar electricity. And our sensor
+cluster, which includes all the sensors needed to send the data back: the IR sensor,
+the temperature-and-humidity sensor, and the soil-moisture sensor.
+
+In the side view — the blue board is the Arduino UNO microcontroller, the bigger
+board is the FPGA controller, and the thing that looks a bit like a standard switch
+is our mist pump with its relay. And in the top view you can see the sensors and the
+wiring over the two farm beds.
+
+[next slide]
+
+That's AgriNova. Do you have any questions I can answer?
+
+================ DELIVERY NOTES FOR NEXT TIME ================
+1. Don't say "next slide" aloud — use a clicker or a nod to a teammate.
+2. One notch slower and louder; pause AFTER each number ("Seventy percent." ...pause).
+3. Re-add the opening hook: hold up the IR sensor — "This costs sixty rupees..." —
+   it was in the rehearsed script and is the strongest 20 seconds.
+4. End with the stall invite before Q&A: "Come break the beam yourself at stall X."
