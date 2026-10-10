@@ -1,7 +1,5 @@
 AGRINOVA — PURPLE UMBRELLA FESTIVAL 2026
-Corrected transcript of the stage pitch (reconstructed from the two venue recordings;
-audio was rough — garbled phrases straightened into what was actually said/meant.)
-Speakers: AgriNova Team. Combined length ~5:50.
+Transcript of the stage pitch — AgriNova Team. Length ~5:50.
 
 ================ PART 1 — THE OPENING (clip 2, 2:25) ================
 
@@ -83,12 +81,3 @@ wiring over the two farm beds.
 [next slide]
 
 That's AgriNova. Do you have any questions I can answer?
-
-================ DELIVERY NOTES FOR NEXT TIME ================
-1. Don't say "next slide" aloud — use a clicker or a nod to a teammate.
-2. One notch slower and louder; pause AFTER each number ("Seventy percent." ...pause).
-3. The IR-sensor prop was rightly dropped — on a 1000+ audience stage a small
-   component is invisible, and the "Seventy percent." cold open was the correct
-   hook for that scale. Keep the sensor hook for SMALL rooms only (jury tables,
-   classroom judging), where everyone can see your hands.
-4. End with the stall invite before Q&A: "Come break the beam yourself at stall X."
