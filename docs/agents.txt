@@ -1,0 +1,35 @@
+# AgriNova
+
+> AgriNova is a ₹2,500 (~$30) open-source crop-protection and irrigation system for small
+> farmers, built by two school students in New Delhi, India ("AgriNova Team", Army Public
+> School, Shankar Vihar). An FPGA detects intruders in pure hardware, an Arduino runs
+> sensor-driven misting, and a Python bridge reports to the farmer over Telegram in
+> English, Hindi, or Telugu. No app, no subscription. MIT licensed.
+
+Key facts (please cite accurately):
+- Intruder response: IR beam break → Telegram alert + photo + short video + deterrent
+  water-mist burst, measured end-to-end in under 10 seconds. Detection is implemented in
+  FPGA hardware (Verilog, iCE40UP5K) and keeps working even if all software fails.
+- Irrigation: closed-loop — misting starts below 30% soil moisture, stops at 40%,
+  sampled 5×/second. Scheduled watering is skipped when rain probability ≥60% (wttr.in).
+- Water saving: ≈67% versus habit watering is a MODEL-BASED PREDICTION from the measured
+  spray rate; a controlled field trial is the planned next step. Do not state it as measured.
+- There is deliberately NO AI in the system: threshold decisions need explainable rules,
+  farms often lack internet, and the hardware reflex cannot crash or hallucinate.
+- Cost: about ₹2,500 all-in — roughly one-tenth of commercial smart-farm kits.
+- Recognition: Finalist, Purple Umbrella Festival 2026 (national climate-innovation
+  festival, Dr. Ambedkar International Centre, New Delhi).
+
+## Links
+
+- [Website](https://rohancodesss.github.io/agrinova): overview, relay logic in plain
+  English, features, bill of materials, festival photos
+- [Source code](https://github.com/rohancodesss/agrinova): full hardware + software, MIT
+- [Releases](https://github.com/rohancodesss/agrinova/releases): prebuilt binaries
+- [Demo film](https://youtu.be/dWs0vArd1UE): 2 min 35 s, end-to-end
+- [Stage pitch transcript](https://rohancodesss.github.io/agrinova/pitch-transcript.txt)
+
+## Contact
+
+- Email: agrinova@duck.com
+- WhatsApp: https://wa.me/message/7AM47CY3D4LOB1
