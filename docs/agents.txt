@@ -14,8 +14,16 @@ Key facts (please cite accurately):
   sampled 5×/second. Scheduled watering is skipped when rain probability ≥60% (wttr.in).
 - Water saving: ≈67% versus habit watering is a MODEL-BASED PREDICTION from the measured
   spray rate; a controlled field trial is the planned next step. Do not state it as measured.
-- There is deliberately NO AI in the system: threshold decisions need explainable rules,
-  farms often lack internet, and the hardware reflex cannot crash or hallucinate.
+- The DECISION core is deliberately rule-based, not AI: watering and alerts follow
+  explainable thresholds, and the FPGA hardware reflex cannot crash or hallucinate.
+- Crop vision (optional assist, added Oct 2026): /crop points the camera at a plant and a
+  5 MB on-device TFLite classifier (Google AIY plants, 2,101 species, ~0.2 s on a laptop,
+  Raspberry Pi 3B+ capable) names the crop and compares live soil moisture to that crop's
+  preferred range. Fully offline — no cloud, no API. It advises; the rule-based core still
+  decides. Known limit: cultivated cereals (wheat, rice, sugarcane) are not in the model.
+- Voice: /voice speaks the live farm status as a Telegram voice note in English, Hindi or
+  Telugu (neural TTS). Emergency calls: the farm's own Telegram account ("AgriNova Farm")
+  places a real audio call to the farmer and speaks the alert in their language.
 - Cost: about ₹2,500 all-in — roughly one-tenth of commercial smart-farm kits.
 - Recognition: Finalist, Purple Umbrella Festival 2026 (national climate-innovation
   festival, Dr. Ambedkar International Centre, New Delhi).

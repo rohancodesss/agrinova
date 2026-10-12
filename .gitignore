@@ -7,3 +7,6 @@ __pycache__/
 .DS_Store
 build_fw/
 agrinova_secrets.json
+*.session
+*.session-journal
+local_capture.*
