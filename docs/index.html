@@ -132,7 +132,12 @@ footer p{margin-top:.4rem}
 #tpanel{position:fixed;left:calc(18px + env(safe-area-inset-left));bottom:calc(74px + env(safe-area-inset-bottom));z-index:49;width:min(480px,calc(100vw - 36px));height:min(430px,62vh);background:#0a0f0a;border:1px solid #2f6b3f;display:none;flex-direction:column;overflow:hidden}
 #tpanel.open{display:flex}
 #tpanel .tbar{display:flex;gap:.45em;align-items:center;background:#0f1a10;padding:.5em .8em;border-bottom:1px solid #163a1f;color:#1d9c46;font:12px var(--mono)}
-#tpanel .tbar .d{width:10px;height:10px;border-radius:50%}
+#tpanel .tbar .d{width:12px;height:12px;border-radius:50%;cursor:pointer;position:relative;border:none;padding:0}
+#tpanel .tbar .d::after{content:attr(data-g);position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:bold 9px/1 var(--mono);color:rgba(0,0,0,.55);opacity:0}
+#tpanel .tbar:hover .d::after{opacity:1}
+#tpanel.min{height:38px}
+#tpanel.min #term,#tpanel.min .trow{display:none}
+#tpanel.max{width:min(760px,calc(100vw - 36px));height:min(76vh,640px)}
 #tpanel .tbar .x{margin-left:auto;cursor:pointer;color:#8be9b7;font-size:14px;padding:.3em}
 #term{flex:1;overflow-y:auto;padding:.8em .9em;font:12.5px/1.5 var(--mono);color:#33ff66}
 #term .ln{white-space:pre-wrap;min-height:1.15em}
@@ -316,7 +321,7 @@ footer p{margin-top:.4rem}
 <button id="tbtn" aria-label="open terminal demo">&gt;_ live demo</button>
 <div id="tpanel" role="dialog" aria-label="AgriNova terminal demo">
   <div class="tbar">
-    <span class="d" style="background:#ff5f57"></span><span class="d" style="background:#febc2e"></span><span class="d" style="background:#28c840"></span>
+    <button class="d" id="dred" data-g="×" style="background:#ff5f57" aria-label="close terminal" title="close"></button><button class="d" id="dyel" data-g="−" style="background:#febc2e" aria-label="minimise terminal" title="minimise"></button><button class="d" id="dgrn" data-g="+" style="background:#28c840" aria-label="maximise terminal" title="maximise"></button>
     <span style="margin-left:.5em">agri@farm — mac_bridge.py</span>
     <span class="x" id="tclose" role="button" tabindex="0" aria-label="close terminal">✕</span>
   </div>
@@ -345,6 +350,9 @@ function openT(){ panel.classList.add('open'); input.focus(); if(!booted){booted
 function closeT(){ panel.classList.remove('open'); }
 btn.onclick = () => panel.classList.contains('open') ? closeT() : openT();
 document.getElementById('tclose').onclick = closeT;
+document.getElementById('dred').onclick = e => { e.stopPropagation(); closeT(); panel.classList.remove('min','max'); };
+document.getElementById('dyel').onclick = e => { e.stopPropagation(); panel.classList.remove('max'); panel.classList.toggle('min'); };
+document.getElementById('dgrn').onclick = e => { e.stopPropagation(); panel.classList.remove('min'); panel.classList.toggle('max'); input.focus(); };
 document.getElementById('tclose').onkeydown = e => { if (e.key==='Enter'||e.key===' ') closeT(); };
 document.getElementById('heroTerm').onclick = e => { e.preventDefault(); e.stopPropagation(); openT(); };
 document.getElementById('chatTerm').onclick = e => { e.preventDefault(); e.stopPropagation(); openT(); };
