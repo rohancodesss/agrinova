@@ -346,8 +346,8 @@ function closeT(){ panel.classList.remove('open'); }
 btn.onclick = () => panel.classList.contains('open') ? closeT() : openT();
 document.getElementById('tclose').onclick = closeT;
 document.getElementById('tclose').onkeydown = e => { if (e.key==='Enter'||e.key===' ') closeT(); };
-document.getElementById('heroTerm').onclick = e => { e.preventDefault(); openT(); };
-document.getElementById('chatTerm').onclick = e => { e.preventDefault(); openT(); };
+document.getElementById('heroTerm').onclick = e => { e.preventDefault(); e.stopPropagation(); openT(); };
+document.getElementById('chatTerm').onclick = e => { e.preventDefault(); e.stopPropagation(); openT(); };
 document.addEventListener('click', e => {
   if (!panel.classList.contains('open')) return;
   if (panel.contains(e.target) || btn.contains(e.target)) return;
