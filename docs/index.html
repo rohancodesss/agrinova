@@ -41,10 +41,17 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
 .m{font-family:var(--mono);font-size:.78rem;letter-spacing:.04em}
 
 /* ---------- masthead ---------- */
-header{padding:4.5rem 0 2.5rem;border-bottom:3px double var(--ink)}
+header{padding:4.2rem 0 2.5rem;border-bottom:3px double var(--ink);position:relative}
+.mast{display:grid;grid-template-columns:1.25fr .75fr;gap:2.2rem;align-items:center}
+@media(max-width:720px){.mast{grid-template-columns:1fr}}
 .eyebrow{font-family:var(--mono);font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mut)}
-header h1{font-family:var(--serif);font-weight:700;font-size:clamp(2.3rem,7vw,4rem);line-height:1.05;margin:.6rem 0 1rem;letter-spacing:-.01em}
+header h1{font-family:var(--serif);font-weight:700;font-size:clamp(2.3rem,6vw,3.6rem);line-height:1.05;margin:.6rem 0 1rem;letter-spacing:-.01em}
+header h1 .ul{box-shadow:inset 0 -.28em 0 #bfe3c6}
 header .sub{max-width:580px;font-size:1.06rem;color:var(--ink)}
+.mastfig{position:relative}
+.mastfig img{width:100%;border:1px solid var(--ink);display:block;transform:rotate(1.2deg);box-shadow:4px 4px 0 var(--rule)}
+.mastfig figcaption{font-family:var(--mono);font-size:.68rem;color:var(--mut);margin-top:.6rem;text-align:center}
+.stamp{position:absolute;top:-16px;right:-10px;transform:rotate(8deg);font-family:var(--mono);font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;color:var(--red);border:2px solid var(--red);padding:.45em .7em;background:var(--paper);line-height:1.35;text-align:center;opacity:.9}
 .specline{margin-top:1.6rem;font-family:var(--mono);font-size:.8rem;color:var(--mut);line-height:2}
 .specline b{color:var(--ink);font-weight:500}
 .navline{margin-top:1.4rem;display:flex;gap:1.6rem;flex-wrap:wrap;font-family:var(--mono);font-size:.82rem}
@@ -55,13 +62,13 @@ header .sub{max-width:580px;font-size:1.06rem;color:var(--ink)}
 .vitals{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));border-bottom:1px solid var(--rule)}
 .vitals div{padding:1.1rem .4rem 1rem;border-right:1px solid var(--rule)}
 .vitals div:last-child{border-right:0}
-.vitals b{display:block;font-family:var(--mono);font-weight:500;font-size:1.25rem;color:var(--green-deep)}
+.vitals b{display:block;font-family:var(--serif);font-weight:700;font-size:1.5rem;color:var(--green-deep)}
 .vitals span{font-family:var(--mono);font-size:.68rem;letter-spacing:.05em;text-transform:uppercase;color:var(--mut)}
 
 /* ---------- sections ---------- */
 section{padding:3.4rem 0 .6rem}
 h2{font-family:var(--serif);font-weight:700;font-size:1.65rem;padding-bottom:.5rem;border-bottom:1px solid var(--ink);margin-bottom:1.5rem}
-h2 .no{font-family:var(--mono);font-weight:400;font-size:.85rem;color:var(--mut);display:block;letter-spacing:.12em;margin-bottom:.3rem}
+h2 .no{font-family:var(--mono);font-weight:500;font-size:.85rem;color:var(--green);display:block;letter-spacing:.12em;margin-bottom:.3rem}
 .note{color:var(--mut);font-size:.95rem}
 
 /* plain-text pipeline */
@@ -85,7 +92,8 @@ h2 .no{font-family:var(--mono);font-weight:400;font-size:.85rem;color:var(--mut)
 /* feature ledger */
 .ledger{border-top:1px solid var(--rule)}
 .led{display:grid;grid-template-columns:2.4rem 200px 1fr;gap:1rem;padding:.85rem 0;border-bottom:1px solid var(--rule);align-items:baseline}
-.led .n{font-family:var(--mono);font-size:.74rem;color:var(--mut)}
+.led .n{font-family:var(--mono);font-size:.74rem;color:var(--green);font-weight:500}
+.led:hover{background:#f1eee2}
 .led h3{font-family:var(--serif);font-weight:700;font-size:1rem}
 .led p{font-size:.92rem;color:var(--mut)}
 .led code{font-family:var(--mono);font-size:.82em;background:#edeadf;padding:.08em .4em;color:var(--green-deep)}
@@ -143,11 +151,20 @@ footer p{margin-top:.4rem}
 
 <div class="wrap">
 <header>
+  <div class="mast">
+  <div>
   <p class="eyebrow">Field notes · Two students, one farm · New Delhi, 2026</p>
-  <h1>A farm that texts you back.</h1>
+  <h1>A farm that <span class="ul">texts you back</span>.</h1>
   <p class="sub">Open-source crop protection &amp; irrigation for small farmers — an FPGA that never
   sleeps, an Arduino that waters, and the Telegram app the farmer already has. When something is
   wrong, the farm doesn't wait to be checked. It calls.</p>
+  </div>
+  <figure class="mastfig">
+    <span class="stamp">Finalist<br>Purple Umbrella ’26</span>
+    <img src="festival_duo.jpg" alt="The two of us with the AgriNova working model at the Purple Umbrella Festival 2026" loading="eager">
+    <figcaption>fig. 0 — the machine, and the two of us who built it</figcaption>
+  </figure>
+  </div>
   <p class="specline">
     <b>₹2,500</b> in parts &nbsp;·&nbsp; <b>₹0</b>/month &nbsp;·&nbsp; MIT licence &nbsp;·&nbsp;
     English · <span lang="hi">हिंदी</span> · <span lang="te">తెలుగు</span><br>
