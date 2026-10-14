@@ -10,3 +10,5 @@ agrinova_secrets.json
 *.session
 *.session-journal
 local_capture.*
+.claude/
+.impeccable/
