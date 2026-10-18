@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgriNova Control Room</title>
+<style>
+:root{--dg:#1B5E20;--mg:#2E7D32;--lg:#81C784;--bg:#F4F9F1;--pale:#DFF0D8;--ink:#12220f;--mut:#4E6E52;
+  --ease:cubic-bezier(.32,.08,.24,1)}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden;background:var(--bg)}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink);display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:14px;padding:12px 22px;background:#fff;box-shadow:0 2px 14px rgba(18,34,15,.08);z-index:5}
+header svg{width:44px;height:44px}
+header h1{font-size:22px;font-weight:800;color:var(--dg)}
+header p{font-size:13px;color:var(--mut);font-weight:600}
+#live{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:var(--mut)}
+#livedot{width:10px;height:10px;border-radius:50%;background:#c3cfc3}
+#livedot.on{background:#2fae4e;box-shadow:0 0 0 4px rgba(47,174,78,.18)}
+main{flex:1;display:grid;grid-template-columns:40% 1fr;gap:14px;padding:14px;min-height:0}
+
+/* ---- chat (left) ---- */
+#chatwrap{display:flex;flex-direction:column;background:#fff;border-radius:16px;box-shadow:0 8px 28px rgba(18,34,15,.08);overflow:hidden;min-height:0}
+.chathead{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid #eef3ec;flex:none}
+.pav{width:36px;height:36px;border-radius:50%;background:var(--mg);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px}
+.pname{font-weight:800;font-size:15px}.pstat{font-size:11.5px;color:#3fa34d;font-weight:700}
+#chatlog{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:9px;scroll-behavior:smooth}
+#chatlog::-webkit-scrollbar{width:0}
+.bub{max-width:88%;padding:9px 13px;border-radius:13px;font-size:14px;line-height:1.4;font-weight:500;
+  animation:pop .4s var(--ease)}
+@keyframes pop{from{opacity:0;transform:translateY(14px) scale(.97)}}
+.bub.bot{background:#F1F7EE;border-bottom-left-radius:4px;align-self:flex-start;white-space:pre-line}
+.bub.me{background:var(--mg);color:#fff;border-bottom-right-radius:4px;align-self:flex-end}
+#chatlog img{max-width:85%;border-radius:12px;align-self:flex-start;box-shadow:0 5px 16px rgba(18,34,15,.14)}
+#chatlog video{max-width:85%;border-radius:12px;align-self:flex-start}
+.typing{align-self:flex-start;color:var(--mut);font-size:13px;font-weight:600}
+.bbtn{display:inline-block;margin:3px;padding:6px 11px;border-radius:9px;border:1.5px solid var(--pale);
+  background:#F7FBF5;color:var(--dg);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.bbtn:hover{background:var(--pale)}
+.chips{flex:none;display:flex;gap:6px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid #eef3ec}
+.chatbar{flex:none;display:flex;gap:8px;padding:10px 12px 14px}
+#chatin{flex:1;border:2px solid var(--pale);border-radius:999px;padding:10px 16px;font:inherit;font-size:15px;outline:none;background:#F7FBF5}
+#chatin:focus{border-color:var(--lg)}
+#chatsend{border:none;background:var(--mg);color:#fff;width:44px;height:44px;border-radius:50%;font-size:19px;cursor:pointer;flex:none}
+#chatsend:hover{background:var(--dg)}
+
+/* ---- right: tabs ---- */
+#right{display:flex;flex-direction:column;min-height:0;gap:12px}
+#tabs{display:flex;gap:8px;flex:none}
+.tab{flex:1;border:none;background:#fff;border-radius:12px;padding:12px 8px;font:inherit;font-size:14.5px;font-weight:800;
+  color:var(--mut);cursor:pointer;box-shadow:0 4px 14px rgba(18,34,15,.06);transition:all .3s var(--ease)}
+.tab.on{background:var(--dg);color:#fff}
+.tab:hover:not(.on){color:var(--dg)}
+.pane{flex:1;background:#fff;border-radius:16px;box-shadow:0 8px 28px rgba(18,34,15,.08);padding:18px;overflow-y:auto;min-height:0;display:none}
+.pane.on{display:block}
+.pane::-webkit-scrollbar{width:0}
+h2{font-size:20px;font-weight:800;color:var(--dg);margin-bottom:4px}
+.sub{font-size:13px;color:var(--mut);font-weight:600;margin-bottom:14px}
+
+/* simulator */
+.simgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.simcard{background:#F7FBF5;border:1.5px solid var(--pale);border-radius:14px;padding:14px}
+.simcard h3{font-size:15px;font-weight:800;color:var(--dg);margin-bottom:8px}
+input[type=range]{width:100%;accent-color:var(--mg);height:28px}
+.read{font-size:14px;font-weight:700;color:var(--ink);margin-top:4px}
+.state{margin-top:10px;border-radius:11px;padding:10px 12px;font-size:14.5px;font-weight:800;text-align:center;transition:all .3s var(--ease)}
+.state.idle{background:#eef3ec;color:var(--mut)}
+.state.go{background:var(--dg);color:#fff}
+.state.warn{background:#FDEDEC;color:#B3261E}
+.why{font-size:12px;color:var(--mut);font-weight:600;margin-top:7px;line-height:1.45}
+#beam{width:100%;border:none;background:#B3261E;color:#fff;font:inherit;font-weight:800;font-size:16px;
+  padding:13px;border-radius:12px;cursor:pointer;transition:transform .2s var(--ease)}
+#beam:hover{transform:scale(1.02)}
+#beam:disabled{background:#d8a5a1;cursor:default;transform:none}
+#seq{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.step{font-size:13.5px;font-weight:700;color:#b9c4b9;transition:color .3s var(--ease)}
+.step.hit{color:var(--dg)}
+.simnote{grid-column:1/-1;font-size:12px;color:var(--mut);font-weight:600;text-align:center}
+
+/* how */
+.hcard{background:#F7FBF5;border:1.5px solid var(--pale);border-radius:14px;padding:14px;margin-bottom:10px}
+.hcard b{color:var(--dg)}
+.hcard p{font-size:14px;line-height:1.5;margin-top:3px}
+
+/* film */
+video.film{width:100%;border-radius:14px;background:#000}
+
+/* home */
+.qrow{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;text-align:center}
+.qrow img{width:100%;max-width:150px;border-radius:10px;border:1.5px solid var(--pale);background:#fff;padding:6px}
+.qrow .l{font-size:12.5px;font-weight:800;color:var(--dg);margin-top:6px}
+.homefoot{text-align:center;font-size:13px;color:var(--mut);font-weight:600;margin-top:16px;line-height:1.6}
+</style>
+</head>
+<body>
+<header>
+  <svg viewBox="0 0 512 512"><rect x="16" y="16" width="480" height="480" rx="104" fill="#DFF0D8"/><path d="M136 104 h240 a56 56 0 0 1 56 56 v168 a56 56 0 0 1 -56 56 h-140 l-72 72 v-72 h-28 a56 56 0 0 1 -56 -56 v-168 a56 56 0 0 1 56 -56 z" fill="#fff" stroke="#2E7D32" stroke-width="18" stroke-linejoin="round"/><path d="M186 330 q70 -26 140 0 z" fill="#8D6E63"/><path d="M256 330 C 256 292 256 260 256 220" fill="none" stroke="#2E7D32" stroke-width="14" stroke-linecap="round"/><path d="M252 246 C 196 244 162 210 156 158 C 210 162 248 196 254 244 Z" fill="#2E7D32"/><path d="M260 246 C 316 244 350 210 356 158 C 302 162 264 196 258 244 Z" fill="#81C784"/></svg>
+  <div>
+    <h1>AgriNova Control Room</h1>
+    <p>The real prototype is on this table — talk to it, test its logic, watch it work.</p>
+  </div>
+  <div id="live"><span id="livedot"></span><span id="livetxt">connecting to the farm…</span></div>
+</header>
+
+<main>
+  <!-- live chat -->
+  <div id="chatwrap">
+    <div class="chathead"><div class="pav">🌿</div>
+      <div><div class="pname">AgriNovaBot</div><div class="pstat">live prototype · on this table</div></div></div>
+    <div id="chatlog"></div>
+    <div class="chips">
+      <button class="bbtn" data-c="/status">/status</button>
+      <button class="bbtn" data-c="/crop">/crop</button>
+      <button class="bbtn" data-c="/photo">/photo</button>
+      <button class="bbtn" data-c="/graph">/graph</button>
+      <button class="bbtn" data-c="/spray 5">/spray 5</button>
+      <button class="bbtn" data-c="/summary">/summary</button>
+      <button class="bbtn" data-c="/weather">/weather</button>
+      <button class="bbtn" data-c="/menu">/menu</button>
+    </div>
+    <div class="chatbar">
+      <input id="chatin" placeholder="Message the farm…" autocomplete="off">
+      <button id="chatsend">➤</button>
+    </div>
+  </div>
+
+  <!-- tabs -->
+  <div id="right">
+    <div id="tabs">
+      <button class="tab on" data-p="sim">🎛 Try the logic</button>
+      <button class="tab" data-p="how">⚡ How it works</button>
+      <button class="tab" data-p="film">🎬 The film</button>
+      <button class="tab" data-p="home">📦 Take it home</button>
+    </div>
+
+    <div class="pane on" id="pane-sim">
+      <h2>Drive the brain yourself</h2>
+      <div class="sub">These sliders run the exact same rules as the real farm beside you.</div>
+      <div class="simgrid">
+        <div class="simcard">
+          <h3>💧 Soil moisture</h3>
+          <input type="range" id="soil" min="0" max="100" value="55">
+          <div class="read">Soil reads: <span id="soilv">55</span>%</div>
+          <div class="state idle" id="mist">MIST OFF</div>
+          <div class="why" id="mistwhy">Above 30% — no watering needed.</div>
+        </div>
+        <div class="simcard">
+          <h3>🌧 Rain chance (next 6 h)</h3>
+          <input type="range" id="rain" min="0" max="100" value="20">
+          <div class="read">Forecast says: <span id="rainv">20</span>%</div>
+          <div class="state go" id="sched">TONIGHT'S 18:00 SPRAY: WILL RUN</div>
+          <div class="why" id="schedwhy">Below 60% — the scheduled spray goes ahead.</div>
+        </div>
+        <div class="simcard" style="grid-column:1/-1">
+          <h3>🚨 Intruder test</h3>
+          <button id="beam">BREAK THE IR BEAM</button>
+          <div id="seq">
+            <div class="step" id="st0">① FPGA reflex fires — pure hardware, instant</div>
+            <div class="step" id="st1">② "Someone is in your farm!" hits the farmer's phone</div>
+            <div class="step" id="st2">③ Camera photo arrives</div>
+            <div class="step" id="st3">④ 5-second video follows</div>
+            <div class="step" id="st4">⑤ Mist burst — intruder scared off. Total: under 10 s</div>
+          </div>
+        </div>
+        <div class="simnote">Hysteresis in action: misting starts below 30% but runs until 40% — so it never flickers on the boundary.</div>
+      </div>
+    </div>
+
+    <div class="pane" id="pane-how">
+      <h2>Reflex. Hands. Brain.</h2>
+      <div class="sub">Safety-critical detection in hardware; intelligence in software.</div>
+      <div class="hcard"><b>⚡ The reflex — FPGA (iCE40UP5K).</b><p>Pure hardware watches the IR beam. Reacts instantly, ignores repeats for 10 seconds, and cannot crash, hang, or look away — even if every computer fails.</p></div>
+      <div class="hcard"><b>🦾 The hands — Arduino UNO.</b><p>Reads soil moisture and the climate sensor every second, and switches the relay that powers the water-mist pump.</p></div>
+      <div class="hcard"><b>🧠 The brain — Python bridge.</b><p>Runs the Telegram bot, camera, weather checks, logs and graphs — in English, Hindi and Telugu. Built for ~Rs 2,500, fully open source.</p></div>
+      <div class="hcard"><b>🙅 Where's the AI?</b><p>We chose not to use it. Threshold decisions need rules, not learning — rules are explainable, run without internet, and never hallucinate. Responsible use of AI is knowing when not to use it.</p></div>
+    </div>
+
+    <div class="pane" id="pane-film">
+      <h2>The demo film</h2>
+      <div class="sub">2 minutes 35 — the whole system, end to end.</div>
+      <video class="film" controls preload="metadata" src="AgriNova_Demo_1080p.mp4"></video>
+    </div>
+
+    <div class="pane" id="pane-home">
+      <h2>Take it home</h2>
+      <div class="sub">Open source, MIT license. Scan and build your own.</div>
+      <div class="qrow">
+        <div><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUoAAAFKAQAAAABTUiuoAAACfUlEQVR4nO1bwY3jMAwcygLytIEUsKXYHVxNW9J1YJeSAgJYzwVs8ECKsZ27T3aBXQsn8iFY0TwIDIakKIYYL9oUXkUCDg0OhUORyGwAQEQR+cu2arEQX1+18P9CG1ZT3oD2g+wsRaDXo7kYXx2KrCjlDf3tIrxF8HsnP4nyhpJ8rRkan3aryGolnjoQ9/P1BxwIDsXX2GqXyEjNQv18XTANzQ84EByKT7LF/wgMkrJkbWVN3+eAQ8PnoGuu+4B0YRokeYnRIFXGpEddMb7WDaWjrFJ3UBkBzXI4nE73NTgUWqiLWeknUhuk1Bjbj/zl2ioFCmZeoDcqHltm9LNEwlZV1TCPGhhbZh5P9zVUDwWz0qNXrdm2R94ed2d2tnA6FEZP/noIDNuSGXS2yoDCmk6HIGjbnTcjNJzta6geij0SWgaTZdxT1uOLnS2cDoXRozoSk9Bn5OU0pvdkj4RFsGVd3Vyy63cOggswad2uNGqRH8rwtWYoclLScLjlLWXLDnhxbZWWt/otHGoRuKWsfWFnC6dDYU+NT0Qdy8F8d3a2imHLgmCOf+OhqpeGRqbMI2ERbG3vWyuhn9fcyyW094j+txymuFh/N5zta6geiod0bPziKKu9jHdtFTjz1DJjoggeZS5DYuI+/YQifK0cGrE9YxGwRn0xtnCoj8ppe+QKZ/saHIrnmSd+7zSDaXWoT1sr2T05lOFrzdD4156AC9P0JkOF7T2y6I36W/QqA8VBV7K2YZKhwk1005tEw8J8rRfK2mCSSGgVRe48aUNXOk837xMWwVY8jKQhXZcsqX5eI0+/7lJlSM7Sgj6c7WuoHkr+jyA49GULDsXL9gfYpKXd6s9gFAAAAABJRU5ErkJggg==" alt="Website QR"><div class="l">Website &amp; live demo</div></div>
+        <div><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAUoAAAFKAQAAAABTUiuoAAACdElEQVR4nO1bQY7bMAwc0gJ6dIA8oE9xftav2U/pAwpYxwVksCApOcIeFu6htVCJh90omsMAxFBDSiHBxdj4KhIYUB5QDCgi5XjFAGxEBMQAIrI/FqERrleD/1/oJBYADgLmpN8fJLIDWGxrb4brgMJ1BMwi9MMyg0mIvmveVHmvlrheCu4AGjVlWgRf8wfJ+u8JfB2M3qGhXswfhO2h/o8maY8rDyg0RMROq3xQYdmPbDq0OmaVcRtce4ce7vuA+E1yOcSkKTOVaTya4do3FFKFGQwT05wgq356x3o7V+4eCpFdzyjz7ZojWy5aGL0miuZNTf56O1fuHoosHNPRDlcUFsuglkPvxvaRrVay5dqy7thcRhZYlTyvjnw3V+4eincl9NOqEpiVQ8/b0FYr2TLzftY/y9F5gvmujZ/W27ly91BYPqyjKk1XOa2ywKxEDm01ka0AxAdokSMQ5t1Hu+LzXYTUFFfuHopSCUuDVdkKB2SVyaiEaMTBw08rn2BMdf07TYeMbKGlbEklq3OMoT5xOPjWHDyKok6VfdqQkS3cDg1l6LTD2+Pt8QvZavgt8l8mwAOKP4Ie6v8AuyLJo11f6ly+7KINrn1DQ2mwAEHUf/HpSwKmZP5eLydTA1x5QFG9eapURn6LbE8ystXgBrh2DkUZMOXJ07vLKiPCAllv58rdQ0Nd9eYEWvZnwvZSlxFNalPSXTTAlQcUVZitKE7QXqjJer4sRFtcvw7uCbrYJddPfaahbwzHe8KmKqH4Yhb1f5qtdXrPd4Ns9g6U7+bK3UND3VHFZ7JpvNgn/YaW0jXjfq7cPZTGL4IwoJeDBxSX4zeZHMA7XTUpEAAAAABJRU5ErkJggg==" alt="GitHub QR"><div class="l">Source code</div></div>
+        <div><img src="data:image/png;base64,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" alt="WhatsApp QR"><div class="l">WhatsApp us</div></div>
+        <div><img src="data:image/png;base64,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" alt="YouTube QR"><div class="l">The demo film</div></div>
+      </div>
+      <div class="homefoot">rohancodesss.github.io/agrinova · github.com/rohancodesss/agrinova<br>
+      agrinova@duck.com · <b>AgriNova Team</b> · Purple Umbrella Festival 2026</div>
+    </div>
+  </div>
+</main>
+
+<script>
+/* ---------- tabs ---------- */
+document.querySelectorAll(".tab").forEach(t=>t.addEventListener("click",()=>{
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x===t));
+  document.querySelectorAll(".pane").forEach(p=>p.classList.toggle("on",p.id==="pane-"+t.dataset.p));
+  if(t.dataset.p!=="film")document.querySelector("video.film").pause();
+}));
+
+/* ---------- simulator ---------- */
+const soil=document.getElementById("soil"),rain=document.getElementById("rain");
+let misting=false;
+function simSoil(){
+  const v=+soil.value;document.getElementById("soilv").textContent=v;
+  if(!misting&&v<30)misting=true;
+  if(misting&&v>=40)misting=false;
+  const m=document.getElementById("mist"),w=document.getElementById("mistwhy");
+  if(misting){m.textContent="MIST ON — watering";m.className="state go";
+    w.textContent=v<30?"Below 30% — misting started. It will run until the soil reads 40%.":
+      "Still under 40% — misting continues (started when it dropped below 30%).";}
+  else{m.textContent="MIST OFF";m.className="state idle";
+    w.textContent=v>=40?"At or above 40% — target reached, mist stopped.":"Between 30–40% and falling? It waits for 30% before starting.";}
+}
+function simRain(){
+  const v=+rain.value;document.getElementById("rainv").textContent=v;
+  const s=document.getElementById("sched"),w=document.getElementById("schedwhy");
+  if(v>=60){s.textContent="TONIGHT'S 18:00 SPRAY: SKIPPED";s.className="state warn";
+    w.textContent="60% or more — the sky will do the watering. The farmer gets a message saying why.";}
+  else{s.textContent="TONIGHT'S 18:00 SPRAY: WILL RUN";s.className="state go";
+    w.textContent="Below 60% — the scheduled spray goes ahead.";}
+}
+soil.addEventListener("input",simSoil);rain.addEventListener("input",simRain);
+simSoil();simRain();
+const beam=document.getElementById("beam");
+beam.addEventListener("click",()=>{
+  beam.disabled=true;beam.textContent="SEQUENCE RUNNING…";
+  const steps=[0,400,2000,4500,7000];
+  document.querySelectorAll(".step").forEach(s=>s.classList.remove("hit"));
+  steps.forEach((t,i)=>setTimeout(()=>document.getElementById("st"+i).classList.add("hit"),t));
+  setTimeout(()=>{beam.disabled=false;beam.textContent="BREAK THE IR BEAM";},8200);
+});
+
+/* ---------- live chat (same brain as the Telegram bot) ---------- */
+let DEMO_URL=null;
+function farmCandidates(){
+  const q=new URLSearchParams(location.search).get("farm");
+  if(q)return[q];
+  if(location.protocol==="http:"&&location.hostname)return[location.hostname];
+  const base=["localhost","192.168.1.100","172.20.10.1","172.20.10.2","172.20.10.3","172.20.10.4","172.20.10.5","172.20.10.6"];
+  let saved=null;try{saved=localStorage.getItem("farmIP")}catch(e){}
+  return saved?[saved,...base.filter(b=>b!==saved)]:base;
+}
+function probe(ip){
+  return new Promise((res,rej)=>{
+    const ctl=new AbortController();
+    const t=setTimeout(()=>{ctl.abort();rej(ip)},2500);
+    fetch(`http://${ip}:5001/demo`,{method:"POST",signal:ctl.signal,
+          headers:{"Content-Type":"application/json"},body:JSON.stringify({text:""})})
+      .then(()=>{clearTimeout(t);res(ip)}).catch(()=>{clearTimeout(t);rej(ip)});
+  });
+}
+async function findFarm(){
+  if(DEMO_URL)return DEMO_URL;
+  try{
+    const ip=await Promise.any(farmCandidates().map(probe));
+    DEMO_URL=`http://${ip}:5001/demo`;
+    try{localStorage.setItem("farmIP",ip)}catch(e){}
+    document.getElementById("livedot").classList.add("on");
+    document.getElementById("livetxt").textContent="farm online";
+    return DEMO_URL;
+  }catch(e){
+    document.getElementById("livetxt").textContent="farm offline";
+    return null;
+  }
+}
+const log=document.getElementById("chatlog"),inp=document.getElementById("chatin"),send=document.getElementById("chatsend");
+function el(h){const d=document.createElement("div");d.innerHTML=h;return d.firstElementChild}
+function scroll(){log.scrollTop=log.scrollHeight}
+function bot(n){log.appendChild(n);scroll()}
+function bubble(cls,t){const b=el(`<div class="bub ${cls}"></div>`);b.textContent=t;return b}
+function renderMsg(m){
+  if(m.type==="photo"){const i=el(`<img alt="photo from the farm">`);i.src=`data:${m.mime||"image/jpeg"};base64,${m.b64}`;bot(i);
+    if(m.caption)bot(bubble("bot",m.caption));}
+  else if(m.type==="video"){const v=el(`<video controls autoplay muted playsinline></video>`);v.src=`data:video/mp4;base64,${m.b64}`;bot(v);
+    if(m.caption)bot(bubble("bot",m.caption));}
+  else{const b=bubble("bot",m.text||"");
+    if(m.buttons)m.buttons.forEach(row=>{const r=el("<div></div>");
+      row.forEach(btn=>{const bb=el(`<button class="bbtn"></button>`);bb.textContent=btn.t;
+        bb.addEventListener("click",()=>ask(btn.cb));r.appendChild(bb);});b.appendChild(r);});
+    bot(b);}
+}
+let busy=false;
+async function ask(text){
+  text=(text||"").trim();if(!text||busy)return;
+  busy=true;
+  log.appendChild(bubble("me",text));scroll();
+  const t=el(`<div class="typing">AgriNova is thinking…</div>`);bot(t);
+  try{
+    const url=await findFarm();
+    if(!url)throw new Error("no farm");
+    const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text})});
+    const j=await r.json();t.remove();(j.messages||[]).forEach(renderMsg);
+  }catch(e){t.remove();bot(bubble("bot","⚠️ I can't reach the farm's brain. Is the bridge (agri) running, and are we on the same Wi-Fi?"));DEMO_URL=null;}
+  busy=false;scroll();
+}
+send.addEventListener("click",()=>{ask(inp.value);inp.value=""});
+inp.addEventListener("keydown",e=>{if(e.key==="Enter"){ask(inp.value);inp.value=""}});
+document.querySelectorAll(".chips .bbtn").forEach(b=>b.addEventListener("click",()=>ask(b.dataset.c)));
+bot(bubble("bot","🌿 Namaste! I'm the real AgriNova prototype on this table. Ask me anything — try /status, or tap a command below."));
+findFarm();
+</script>
+</body>
+</html>

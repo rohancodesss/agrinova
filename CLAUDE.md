@@ -20,6 +20,7 @@ Read this whole file before touching anything. Hardware is physically wired and 
 | `top.v`, `VSDSquadronFM.pcf` | FPGA design currently flashed (IR-only). |
 | `top_soil_variant.v.bak`, `VSDSquadronFM_soil.pcf.bak` | Older soil-on-FPGA variant, unused. |
 | `sensor_probe/sensor_probe.ino` | I2C scan + DHT11/22 probe sketch for debugging. |
+| `crop_vision.py`, `models/` | `/crop` on-device plant ID (AIY plants_V1 TFLite, 2101 species) + water advice. Mac: `ai-edge-litert==1.3.0` (2.0.3 wheel is broken on macOS/py3.9); Pi 3B+: `tflite-runtime`. |
 | `windows/camera_service.py` | Copy of the Windows VM camera client (canonical copy lives at `~/Desktop/WINDOWS_AGRI/`, shared into the VM as `Z:\WINDOWS_AGRI`). Keep both in sync. |
 | `com.agrinova.bridge.plist`, `install_service.sh` | Optional launchd service (`./install_service.sh install`). Only one bridge may run — service OR `agri`, never both. |
 | `agrinova_state.json` | Persisted settings (lockdown, alerts, auto_mist, schedules, soil calibration). Gitignored. |
@@ -62,7 +63,7 @@ Windows VM (UTM, 192.168.64.3) camera_service.py ──polls──► Mac 192.16
 - Commands go through `normalise()` (lowercase, collapse spaces, strip `@bot`, `ALIASES` table so `/mist off` == `/mist_off`) then `handle_command(text)`; each runs in its own thread via `safe_handle`. Inline-keyboard buttons (`/menu`) send `callback_data` into the same path.
 - Commands: `/help /menu /about /status /snapshot /graph /summary /intruders /soil_raw /calibrate air|water|reset /lockdown /unlock /stop /continue /photo /video [s] /mist_on /mist_off /spray [s] /auto_mist on|off /schedule HH:MM [s]|list|clear|remove HH:MM /rotate /rotate_stop`.
 - i18n: `MSGS` dict + `msg(key, **kw)`; `settings["lang"]` ∈ en/hi/te/te_en. `/lang` shows a 3-button picker; `/hindi`, `/telugu`, `/english` are aliases. Translated: intruder, lockdown, mist, soil line, climate, auto-mist, camera-removed, rain-skip. Everything else stays English.
-- Only `ALLOWED_CHAT_IDS` may command the bot; others are logged and ignored.
+- Only `ALLOWED_CHAT_IDS` may command the bot; others are logged and ignored. Exception: `agri --dangerously-allow-everyone` (stall/open mode) lets any Telegram user run `OPEN_COMMANDS` (safe demo set), with replies routed to the visitor's own chat via `reply_local`/`cur_chat()`. `/stop /call /setup /calibrate /schedule /messages /mute /auto_mist` stay owner-only even then. Flag is per-run, never persisted.
 - `settings["lockdown"]` gates IR alerts. On `IR` while locked down: alert → `intruder_response` (photo first, then 5 s video) + 10 s `mist_burst`. Every IR is counted in `state["intruder_events"]` regardless.
 - Weather: `fetch_weather()` hits `https://wttr.in/<location>?format=j1` (no key, 15 min cache). `rain_expected()` → skip SCHEDULED sprays only (auto-mist ignores weather, follows the soil sensor) when chance ≥ 60 % in next 6 h (`settings["rain_skip"]`, default on). `/weather`, `/weather set <city>`, `/rain_skip on|off`. Location persisted in `settings["location"]`.
 - Auto-irrigation: when `auto_mist` is on and soil reads DRY (<40 %) → spray when soil % < `AUTO_MIST_START_PCT` (30), stop when ≥ `AUTO_MIST_WET_PCT` (40) — correct direction for a working sensor (raw high=dry); 10 min safety cap. Schedules fire daily via `scheduler_loop`; daily summary at `DAILY_SUMMARY_TIME` (20:00).

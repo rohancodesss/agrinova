@@ -6,6 +6,7 @@ Listens to the VSDSquadron FM (IR trigger over UART) and the Arduino node
 (which polls us on :5001), and talks to Telegram.
 """
 
+import base64
 import csv
 import glob
 import http.server
@@ -48,10 +49,23 @@ except (FileNotFoundError, KeyError, json.JSONDecodeError) as _e:
              "Create it with: {\"bot_token\": \"<token from @BotFather>\", \"chat_id\": \"<your chat id>\"}")
 ALLOWED_CHAT_IDS = {CHAT_ID}  # anyone else is ignored
 
+# Stall mode: `agri --dangerously-allow-everyone` lets ANY Telegram user run
+# the safe demo commands below, with replies routed to THEIR chat. Shutdown,
+# settings, schedules and calls stay owner-only even then. Never persisted —
+# it is on only while the flag is passed.
+OPEN_MODE = "--dangerously-allow-everyone" in sys.argv
+OPEN_COMMANDS = {
+    "/status", "/snapshot", "/photo", "/video", "/graph", "/summary",
+    "/intruders", "/soil_raw", "/weather", "/crop", "/voice", "/help",
+    "/menu", "/about", "/lang", "/mist_on", "/mist_off", "/spray",
+    "/rotate", "/rotate_stop", "/lockdown", "/unlock",
+}
+
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 SEND_MESSAGE_API = f"{API}/sendMessage"
 SEND_PHOTO_API = f"{API}/sendPhoto"
 SEND_VIDEO_API = f"{API}/sendVideo"
+SEND_VOICE_API = f"{API}/sendVoice"
 GET_UPDATES_API = f"{API}/getUpdates"
 ANSWER_CALLBACK_API = f"{API}/answerCallbackQuery"
 
@@ -79,6 +93,7 @@ HELP_TEXT = (
     "📊 Info\n"
     "/status — everything at a glance\n"
     "/snapshot — photo + live readings\n"
+    "/crop — camera looks at the plant: what is it + does it need water\n"
     "/graph — last 24 h sensor graph\n"
     "/summary — today's summary\n"
     "/intruders — intruder events today\n"
@@ -104,6 +119,7 @@ HELP_TEXT = (
     "\n"
     "⚙️ Other\n"
     "/lang — language: English / हिंदी / తెలుగు / Telugu (English)\n"
+    "/call — the farm rings you · or CALL \"AgriNova Farm\" yourself to hear live status\n"
     "/rotate  /rotate_stop — servo\n"
     "/setup — guided setup wizard (5 questions)\n"
     "/menu — button keyboard\n"
@@ -389,8 +405,42 @@ def find_arduino_port():
 # --------------------------------------------------------------------------
 # Telegram send helpers
 # --------------------------------------------------------------------------
+# Kiosk demo mode: when a command arrives via the local /demo endpoint, replies
+# for THAT thread are captured and returned over HTTP instead of sent to Telegram.
+demo_local = threading.local()
+
+
+def demo_capture():
+    return getattr(demo_local, "capture", None)
+
+
+# Open-mode visitors get replies in their own chat; everything else (alerts,
+# routine updates, owner commands) still goes to the farmer's CHAT_ID.
+reply_local = threading.local()
+
+
+def cur_chat():
+    return getattr(reply_local, "chat_id", None) or CHAT_ID
+
+
+def run_as_visitor(norm_text, visitor_chat):
+    reply_local.chat_id = visitor_chat
+    try:
+        safe_handle(norm_text)
+    finally:
+        reply_local.chat_id = None
+
+
 def send_telegram_message(text, reply_markup=None):
-    payload = {"chat_id": CHAT_ID, "text": text}
+    cap = demo_capture()
+    if cap is not None:
+        entry = {"type": "text", "text": text}
+        if reply_markup and "inline_keyboard" in reply_markup:
+            entry["buttons"] = [[{"t": b["text"], "cb": b.get("callback_data", "")}
+                                 for b in row] for row in reply_markup["inline_keyboard"]]
+        cap.append(entry)
+        return
+    payload = {"chat_id": cur_chat(), "text": text}
     if reply_markup:
         payload["reply_markup"] = json.dumps(reply_markup)
     data = urllib.parse.urlencode(payload).encode()
@@ -455,7 +505,12 @@ def build_multipart(fields, file_field, filename, content_type, file_bytes):
 
 
 def send_telegram_photo(photo_bytes, caption="", filename="photo.jpg", content_type="image/jpeg"):
-    fields = {"chat_id": CHAT_ID}
+    cap = demo_capture()
+    if cap is not None:
+        cap.append({"type": "photo", "b64": base64.b64encode(photo_bytes).decode(),
+                    "mime": content_type, "caption": caption})
+        return
+    fields = {"chat_id": cur_chat()}
     if caption:
         fields["caption"] = caption
     boundary, body = build_multipart(fields, "photo", filename, content_type, photo_bytes)
@@ -469,8 +524,126 @@ def send_telegram_photo(photo_bytes, caption="", filename="photo.jpg", content_t
         print(f"[telegram] photo send failed: {e}", file=sys.stderr)
 
 
+# Neural voices (edge-tts, needs internet) and offline macOS fallbacks, per language.
+VOICE_NEURAL = {"en": "en-IN-PrabhatNeural", "hi": "hi-IN-MadhurNeural",
+                "te": "te-IN-MohanNeural", "te_en": "te-IN-MohanNeural"}
+VOICE_FALLBACK = {"en": "Aman (English (India))", "hi": "Lekha",
+                  "te": "Geeta", "te_en": "Geeta"}
+
+
+def tts_to_file(text, out_path, lang="en"):
+    """Neural TTS via edge-tts; falls back to macOS `say` offline."""
+    try:
+        subprocess.run([sys.executable, "-m", "edge_tts",
+                        "--voice", VOICE_NEURAL.get(lang, VOICE_NEURAL["en"]),
+                        "--text", text, "--write-media", out_path],
+                       check=True, timeout=30, capture_output=True)
+        return True
+    except Exception as e:
+        print(f"[voice] edge-tts failed ({e}); using macOS voice", file=sys.stderr)
+    try:
+        subprocess.run(["say", "-v", VOICE_FALLBACK.get(lang, VOICE_FALLBACK["en"]),
+                        "-o", out_path + ".aiff", text],
+                       check=True, timeout=30, capture_output=True)
+        os.replace(out_path + ".aiff", out_path)
+        return True
+    except Exception as e:
+        print(f"[voice] say failed too: {e}", file=sys.stderr)
+        return False
+
+
+def send_telegram_voice(text, caption="", lang=None):
+    """Speak `text` in the farmer's language and send as a Telegram voice note."""
+    cap = demo_capture()
+    if cap is not None:
+        cap.append({"type": "text", "text": f"🔊 (voice) {text}"})
+        return
+    raw = os.path.join(BASE_DIR, "voice_note.media")
+    ogg = os.path.join(BASE_DIR, "voice_note.ogg")
+    try:
+        if lang is None:
+            lang = cur_lang()
+        if not tts_to_file(text, raw, lang):
+            return
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-i", raw,
+                        "-c:a", "libopus", "-b:a", "32k", "-ar", "48000", ogg],
+                       check=True, timeout=30, capture_output=True)
+        with open(ogg, "rb") as f:
+            data = f.read()
+        fields = {"chat_id": cur_chat()}
+        if caption:
+            fields["caption"] = caption
+        boundary, body = build_multipart(fields, "voice", "voice.ogg", "audio/ogg", data)
+        req = urllib.request.Request(SEND_VOICE_API, data=body,
+                                     headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            resp.read()
+        print(f"[telegram] voice note sent: {text[:40]!r}")
+    except Exception as e:
+        print(f"[telegram] voice note failed: {e}", file=sys.stderr)
+    finally:
+        for f in (raw, ogg):
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+
+
+# Emergency voice CALLS from the farm's own Telegram account (farm_caller.py).
+CALL_USER = "@rohanlanka"
+CALL_COOLDOWN = 120  # seconds between calls, so one animal can't ring you five times
+_last_call = [0.0]
+farm_phone = None    # FarmPhone service (started in main when a session exists)
+
+# What the calls SAY, per language (the voice already matched /lang; the words
+# must too). te_en falls back to Telugu script — the TTS voice needs it.
+CALL_TEXTS = {
+    "test": {
+        "en": "Hello! This is AgriNova, your farm, testing the emergency call. All is well!",
+        "hi": "नमस्ते! यह एग्रीनोवा है, आपका खेत। यह आपातकालीन कॉल की जाँच है। सब ठीक है!",
+        "te": "నమస్కారం! ఇది అగ్రినోవా, మీ పొలం. ఇది అత్యవసర కాల్ పరీక్ష. అంతా బాగుంది!",
+    },
+    "intruder": {
+        "en": "Alert! Someone is in your farm! Check Telegram for the photo.",
+        "hi": "सावधान! कोई आपके खेत में घुस आया है! फोटो के लिए टेलीग्राम देखें।",
+        "te": "హెచ్చరిక! మీ పొలంలో ఎవరో ఉన్నారు! ఫోటో కోసం టెలిగ్రామ్ చూడండి.",
+    },
+}
+
+
+def call_text(key, lang=None):
+    lang = lang or cur_lang()
+    d = CALL_TEXTS[key]
+    return d.get("te" if lang == "te_en" else lang, d["en"])
+
+
+def call_farmer(text, lang=None):
+    """Ring the farmer's Telegram from the farm's own account and speak `text`.
+    Rate-limited so one animal can't ring the farmer five times."""
+    now = time.time()
+    if now - _last_call[0] < CALL_COOLDOWN:
+        print("[call] skipped (cooldown)")
+        return
+    _last_call[0] = now
+    if farm_phone is None or not farm_phone.ready.is_set():
+        print("[call] farm phone not running — no call placed", file=sys.stderr)
+        send_telegram_message("📞 Could not place the call — the farm phone is not "
+                              "running on the Mac (restart the bridge).")
+        return
+    try:
+        ok, why = farm_phone.call(CALL_USER, text, lang or cur_lang())
+        print(f"[call] {why}")
+    except Exception as e:
+        print(f"[call] failed: {e}", file=sys.stderr)
+
+
 def send_telegram_video(video_bytes, caption="", duration_seconds=5):
-    fields = {"chat_id": CHAT_ID, "duration": duration_seconds}
+    cap = demo_capture()
+    if cap is not None:
+        cap.append({"type": "video", "b64": base64.b64encode(video_bytes).decode(),
+                    "caption": caption})
+        return
+    fields = {"chat_id": cur_chat(), "duration": duration_seconds}
     if caption:
         fields["caption"] = caption
     boundary, body = build_multipart(fields, "video", "video.mp4", "video/mp4", video_bytes)
@@ -566,33 +739,39 @@ def local_capture(kind, duration=5):
     except OSError:
         pass
     src = dev if kind == "photo" or not local_cam["audio"] else f"{dev}:{local_cam['audio']}"
-    if kind == "photo":
-        cmd = ["ffmpeg", "-y", "-f", "avfoundation", "-framerate", "30", "-video_size", "640x480",
-               "-i", src, "-frames:v", "1", "-q:v", "4", out]
-        tmo = 25
-    else:
-        cmd = ["ffmpeg", "-y", "-f", "avfoundation", "-framerate", "30", "-video_size", "640x480",
-               "-i", src, "-t", str(duration), "-c:v", "libx264", "-preset", "ultrafast"]
-        cmd += (["-c:a", "aac"] if ":" in src else []) + [out]
-        tmo = duration + 25
-    try:
-        r = subprocess.run(cmd, capture_output=True, timeout=tmo)
-        if (r.returncode != 0 or not os.path.exists(out)) and ":" in src:
-            # audio device failed — retry video-only
-            cmd = [c for c in cmd if c != "-c:a" and c != "aac"]
-            cmd[cmd.index("-i") + 1] = dev
+    tmo = 25 if kind == "photo" else duration + 25
+    # Not every camera supports 640x480@30 (the built-in "Neo" camera only does
+    # 1080x1920): try the cheap mode first, then the device's own default mode,
+    # each with audio and then video-only.
+    attempts = []
+    for size_opts in (["-framerate", "30", "-video_size", "640x480"], []):
+        for s in dict.fromkeys([src, dev]):
+            attempts.append((size_opts, s))
+    r = None
+    for size_opts, s in attempts:
+        cmd = ["ffmpeg", "-y", "-f", "avfoundation"] + size_opts + ["-i", s]
+        if kind == "photo":
+            cmd += ["-frames:v", "1", "-q:v", "4", out]
+        else:
+            cmd += ["-t", str(duration), "-c:v", "libx264", "-preset", "ultrafast",
+                    "-vf", "scale=-2:720"]
+            cmd += (["-c:a", "aac"] if ":" in s else []) + [out]
+        try:
             r = subprocess.run(cmd, capture_output=True, timeout=tmo)
-        if os.path.exists(out) and os.path.getsize(out) > 0:
+        except subprocess.TimeoutExpired:
+            print("[camera] local capture timed out — check camera permission for the "
+                  "terminal (System Settings → Privacy & Security → Camera)", file=sys.stderr)
+            continue
+        except Exception as e:
+            print(f"[camera] local capture error: {e}", file=sys.stderr)
+            continue
+        if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > 0:
             with open(out, "rb") as f:
                 data = f.read()
             print(f"[camera] local {kind} OK ({len(data)} bytes)")
             return data
+    if r is not None:
         print(f"[camera] local {kind} failed: {(r.stderr or b'')[-200:]!r}", file=sys.stderr)
-    except subprocess.TimeoutExpired:
-        print("[camera] local capture timed out — check camera permission for the terminal "
-              "(System Settings → Privacy & Security → Camera)", file=sys.stderr)
-    except Exception as e:
-        print(f"[camera] local capture error: {e}", file=sys.stderr)
     return None
 
 
@@ -616,6 +795,51 @@ def request_capture(kind, duration=None, timeout=60):
     return entry["data"]
 
 
+# Kiosk pages served by the bridge itself, so a second machine on the same
+# network (the HP laptop) just opens http://<this Mac's IP>:5001/kiosk
+KIOSK_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kiosk")
+
+
+def local_ip():
+    """This Mac's address on the current network (hotspot or Wi-Fi)."""
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return None
+
+
+def kiosk_urls_text():
+    ip = local_ip()
+    if not ip:
+        return "📺 Kiosk: no network found — connect this Mac to the hotspot first, then send /kiosk again."
+    return (f"📺 Kiosk screens (open on any device on this network):\n"
+            f"Control Room (HP): http://{ip}:5001/kiosk\n"
+            f"DemoLoop (Dell):  http://{ip}:5001/demoloop\n"
+            f"Billboard (HP):   http://{ip}:5001/billboard\n"
+            f"Remote control:   http://{ip}:5001/portal")
+KIOSK_ROUTES = {"/": "controlroom.html", "/kiosk": "controlroom.html",
+                "/demoloop": "demoloop.html", "/billboard": "billboard.html",
+                "/portal": "portal.html"}
+
+# Screen remote-control: the portal sets a mode per screen, the kiosk pages
+# poll /screensync and obey. "auto" = the page runs its own show.
+kiosk_screens_lock = threading.Lock()
+kiosk_cond = threading.Condition(kiosk_screens_lock)
+kiosk_screens = {
+    "takeover": "",
+    "seq": 0,
+    "hp":   {"mode": "auto", "seen": 0.0, "scene": ""},
+    "dell": {"mode": "auto", "seen": 0.0, "scene": ""},
+}
+KIOSK_TYPES = {".html": "text/html; charset=utf-8", ".mp4": "video/mp4",
+               ".png": "image/png", ".jpg": "image/jpeg", ".pdf": "application/pdf"}
+
+
 class CameraRelayHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/job":
@@ -630,12 +854,150 @@ class CameraRelayHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+            return
+        if self.path == "/screenstatus":
+            now = time.time()
+            with kiosk_screens_lock:
+                body = {s: {"mode": kiosk_screens[s]["mode"],
+                            "scene": kiosk_screens[s]["scene"],
+                            "online": now - kiosk_screens[s]["seen"] < 12}
+                        for s in ("hp", "dell")}
+                body["takeover"] = kiosk_screens["takeover"]
+            self._demo_reply(body)
+            return
+        # static kiosk files (safe: basename only, whitelisted extensions)
+        clean = urllib.parse.unquote(self.path.split("?", 1)[0])
+        name = KIOSK_ROUTES.get(clean) or os.path.basename(clean)
+        ext = os.path.splitext(name)[1].lower()
+        fp = os.path.join(KIOSK_DIR, name)
+        if ext in KIOSK_TYPES and os.path.isfile(fp):
+            self._serve_file(fp, KIOSK_TYPES[ext])
         else:
             self.send_response(404)
             self.end_headers()
 
+    def _serve_file(self, fp, ctype):
+        size = os.path.getsize(fp)
+        rng = self.headers.get("Range")
+        start, end = 0, size - 1
+        if rng and rng.startswith("bytes="):
+            try:
+                s, e = rng[6:].split("-", 1)
+                start = int(s) if s else max(0, size - int(e))
+                end = min(int(e) if e else size - 1, size - 1)
+            except ValueError:
+                start, end = 0, size - 1
+        length = end - start + 1
+        self.send_response(206 if rng else 200)
+        if rng:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.send_header("Content-Type", ctype)
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(length))
+        self.end_headers()
+        try:
+            with open(fp, "rb") as f:
+                f.seek(start)
+                remaining = length
+                while remaining > 0:
+                    chunk = f.read(min(65536, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def _demo_reply(self, obj, status=200):
+        body = json.dumps(obj).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
     def do_POST(self):
-        if self.path.startswith("/result/"):
+        if self.path == "/screensync":
+            # kiosk pages: report who/where they are, receive their orders
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                j = json.loads(self.rfile.read(length))
+                scr = j.get("screen")
+            except Exception:
+                scr = None
+            if scr not in ("hp", "dell"):
+                self._demo_reply({"error": "bad screen"}, 400)
+                return
+            try:
+                client_seq = int(j.get("seq", -1))
+            except (TypeError, ValueError):
+                client_seq = -1
+            with kiosk_cond:
+                kiosk_screens[scr]["seen"] = time.time()
+                kiosk_screens[scr]["scene"] = str(j.get("scene", ""))[:60]
+                if client_seq == kiosk_screens["seq"]:
+                    # nothing new — hold the request until the portal changes
+                    # something (or 8 s passes), so updates land instantly
+                    kiosk_cond.wait(timeout=8)
+                kiosk_screens[scr]["seen"] = time.time()
+                reply = {"mode": kiosk_screens[scr]["mode"],
+                         "takeover": kiosk_screens["takeover"],
+                         "seq": kiosk_screens["seq"]}
+            self._demo_reply(reply)
+            return
+        if self.path == "/screenctl":
+            # the portal: set a screen's mode or the takeover banner
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                j = json.loads(self.rfile.read(length))
+            except Exception:
+                self._demo_reply({"error": "bad json"}, 400)
+                return
+            with kiosk_cond:
+                if "takeover" in j:
+                    kiosk_screens["takeover"] = str(j["takeover"])[:120]
+                scr = j.get("screen")
+                if scr in ("hp", "dell") and "mode" in j:
+                    kiosk_screens[scr]["mode"] = str(j["mode"])[:40]
+                kiosk_screens["seq"] += 1
+                kiosk_cond.notify_all()
+            self._demo_reply({"ok": True})
+            return
+        if self.path == "/demo":
+            # Kiosk chat: run one command locally, return the replies as JSON.
+            # Only reachable from this Mac / the local network — never the internet.
+            length = int(self.headers.get("Content-Length", 0))
+            try:
+                text = json.loads(self.rfile.read(length))["text"]
+            except Exception:
+                self._demo_reply({"messages": [{"type": "text", "text": "⚠️ Bad request"}]}, 400)
+                return
+            norm = normalise(str(text))
+            blocked = ("/stop", "/calibrate", "/setup", "/wizard", "/settings", "/start")
+            if norm.split() and norm.split()[0] in blocked:
+                self._demo_reply({"messages": [{"type": "text",
+                    "text": "🔒 That one is reserved for the farmer's own phone."}]})
+                return
+            msgs = []
+            demo_local.capture = msgs
+            try:
+                handle_command(norm)
+            except Exception as e:
+                msgs.append({"type": "text", "text": f"⚠️ {e}"})
+            finally:
+                demo_local.capture = None
+            if not msgs:
+                msgs.append({"type": "text", "text": "✅ Done."})
+            self._demo_reply({"messages": msgs})
+        elif self.path.startswith("/result/"):
             job_id = self.path.split("/result/", 1)[1]
             length = int(self.headers.get("Content-Length", 0))
             data = self.rfile.read(length) if length else b""
@@ -1080,6 +1442,79 @@ def build_summary():
     return "\n".join(lines)
 
 
+def spoken_status():
+    """Compose a natural spoken summary from the live readings, in the farmer's language."""
+    rollover_day_if_needed()
+    with state_lock:
+        s = dict(state)
+        intruders = len(state["intruder_events"])
+    with settings_lock:
+        lockdown = settings["lockdown"]
+        auto = settings["auto_mist"]
+    lang = cur_lang()
+    L = "te" if lang == "te_en" else lang
+    m, wet, mist = s["moisture"], s["wet"], s["mist_on"]
+    t, h = s["temp"], s["humidity"]
+
+    if L == "hi":
+        parts = ["नमस्ते! मैं एग्रीनोवा हूँ, आपका खेत।"]
+        if m is not None:
+            parts.append(f"मिट्टी {m} प्रतिशत पर है, " + ("अच्छी गीली है।" if wet else "थोड़ी सूखी है।"))
+            if mist:
+                parts.append("मैं अभी पानी दे रहा हूँ।")
+            elif not wet and auto:
+                parts.append("अगर और सूखी हुई, तो मैं खुद पानी दे दूँगा।")
+        else:
+            parts.append("मैं मिट्टी के सेंसर की रिपोर्ट का इंतज़ार कर रहा हूँ।")
+        if t is not None and h is not None:
+            parts.append(f"तापमान {t:.0f} डिग्री है और नमी {h:.0f} प्रतिशत।")
+        if lockdown:
+            parts.append(f"मैं पहरे पर हूँ, और आज {intruders} घुसपैठिए देखे हैं।" if intruders
+                         else "मैं पहरे पर हूँ, और सब शांत है — आज कोई घुसपैठिया नहीं।")
+        else:
+            parts.append("पहरा अभी बंद है।")
+        parts.append("सब कुछ नियंत्रण में है!")
+    elif L == "te":
+        parts = ["నమస్తే! నేను అగ్రినోవా, మీ పొలం."]
+        if m is not None:
+            parts.append(f"మట్టి {m} శాతం ఉంది, " + ("బాగా తడిగా ఉంది." if wet else "కొంచెం పొడిగా ఉంది."))
+            if mist:
+                parts.append("నేను ఇప్పుడు నీళ్ళు పెడుతున్నాను.")
+            elif not wet and auto:
+                parts.append("ఇంకా పొడిగా అయితే, నేనే నీళ్ళు పెడతాను.")
+        else:
+            parts.append("మట్టి సెన్సార్ రిపోర్ట్ కోసం ఎదురు చూస్తున్నాను.")
+        if t is not None and h is not None:
+            parts.append(f"ఉష్ణోగ్రత {t:.0f} డిగ్రీలు, తేమ {h:.0f} శాతం.")
+        if lockdown:
+            parts.append(f"నేను కాపలాగా ఉన్నాను, ఈరోజు {intruders} చొరబాటుదారులను చూశాను." if intruders
+                         else "నేను కాపలాగా ఉన్నాను, అంతా ప్రశాంతం — ఈరోజు చొరబాట్లు లేవు.")
+        else:
+            parts.append("కాపలా ప్రస్తుతం ఆపి ఉంది.")
+        parts.append("అంతా అదుపులో ఉంది!")
+    else:
+        parts = ["Namaste! This is AgriNova, your farm."]
+        if m is not None:
+            parts.append(f"The soil is at {m} percent, "
+                         f"{'nice and wet' if wet else 'on the dry side'}.")
+            if mist:
+                parts.append("I am watering right now.")
+            elif not wet and auto:
+                parts.append("If it gets any drier, I will water it myself.")
+        else:
+            parts.append("I am waiting for my soil sensor to report.")
+        if t is not None and h is not None:
+            parts.append(f"It is {t:.0f} degrees with {h:.0f} percent humidity.")
+        if lockdown:
+            parts.append("I am on guard duty," +
+                         (f" and I have spotted {intruders} intruder{'s' if intruders != 1 else ''} today."
+                          if intruders else " and all is quiet — no intruders today."))
+        else:
+            parts.append("Guard mode is off.")
+        parts.append("Everything is under control!")
+    return " ".join(parts)
+
+
 def build_status():
     rollover_day_if_needed()
     with state_lock:
@@ -1194,9 +1629,120 @@ def handle_ir_event():
     if not settings["alerts"] or not settings["lockdown"]:
         return
     send_telegram_message(msg("intruder", t=now_str()))
+    threading.Thread(target=call_farmer, args=(call_text("intruder"),),
+                     daemon=True).start()
     if not intruder_video_busy.locked():
         threading.Thread(target=intruder_response, daemon=True).start()
     threading.Thread(target=mist_burst, args=(MIST_BURST_SECONDS, "intruder"), daemon=True).start()
+
+
+VOICE_REPLIES = {
+    "goodbye":      {"en": "Goodbye! Your farm is watching. Call me anytime.",
+                     "hi": "अलविदा! आपका खेत ध्यान रख रहा है। कभी भी कॉल कीजिए।",
+                     "te": "వీడ్కోలు! మీ పొలం జాగ్రత్తగా చూస్తోంది. ఎప్పుడైనా కాల్ చేయండి."},
+    "mist_on":      {"en": "Done. The mist is now on.",
+                     "hi": "ठीक है। पानी चालू कर दिया।",
+                     "te": "సరే. నీళ్లు మొదలుపెట్టాను."},
+    "mist_off":     {"en": "Done. The mist is now off.",
+                     "hi": "ठीक है। पानी बंद कर दिया।",
+                     "te": "సరే. నీళ్లు ఆపేశాను."},
+    "already_on":   {"en": "The mist is already on.",
+                     "hi": "पानी पहले से चालू है।",
+                     "te": "నీళ్లు ఇప్పటికే నడుస్తున్నాయి."},
+    "already_off":  {"en": "The mist is already off.",
+                     "hi": "पानी पहले से बंद है।",
+                     "te": "నీళ్లు ఇప్పటికే ఆగి ఉన్నాయి."},
+    "no_arduino":   {"en": "The Arduino is not connected, so I cannot do that.",
+                     "hi": "आर्डुइनो कनेक्ट नहीं है, इसलिए नहीं कर सकता।",
+                     "te": "ఆర్డుయినో కనెక్ట్ కాలేదు, అందుకే చేయలేను."},
+    "spraying":     {"en": f"Spraying for {MIST_BURST_SECONDS} seconds.",
+                     "hi": "दस सेकंड पानी छिड़क रहा हूँ।",
+                     "te": "పది సెకన్లు నీళ్లు చల్లుతున్నాను."},
+    "photo":        {"en": "Taking a photo now — it will arrive in your Telegram chat.",
+                     "hi": "फोटो लेकर आपके टेलीग्राम पर भेज रहा हूँ।",
+                     "te": "ఫోటో తీసి మీ టెలిగ్రామ్‌కి పంపుతున్నాను."},
+    "lockdown_on":  {"en": "Lockdown is on. I will call you if anyone enters the farm.",
+                     "hi": "लॉकडाउन चालू। कोई आया तो आपको कॉल करूँगा।",
+                     "te": "లాక్ డౌన్ ఆన్. ఎవరైనా వస్తే మీకు కాల్ చేస్తాను."},
+    "lockdown_off": {"en": "Lockdown is off. Intruder alerts are muted.",
+                     "hi": "लॉकडाउन बंद। अलर्ट रुक गए।",
+                     "te": "లాక్ డౌన్ ఆఫ్. హెచ్చరికలు ఆగాయి."},
+    "video_wait":   {"en": "One moment — let me show you the farm.",
+                     "hi": "एक पल — आपको खेत दिखाता हूँ।",
+                     "te": "ఒక్క క్షణం — మీకు పొలం చూపిస్తాను."},
+    "fallback":     {"en": "I heard: {h}. You can say: status, video, mist on, mist off, "
+                           "spray, photo, lockdown, or goodbye.",
+                     "hi": "आपने कहा: {h}. कहिए: स्टेटस, पानी चालू, पानी बंद, फोटो, या अलविदा।",
+                     "te": "మీరు అన్నది: {h}. చెప్పండి: స్టేటస్, నీళ్లు పెట్టు, నీళ్లు ఆపు, "
+                           "ఫోటో, లేదా వీడ్కోలు."},
+}
+
+
+def vreply(key, **kw):
+    lang = cur_lang()
+    d = VOICE_REPLIES[key]
+    return d.get("te" if lang == "te_en" else lang, d["en"]).format(**kw)
+
+
+def voice_command(heard):
+    """Farm-phone voice intents: Whisper transcript -> (spoken reply, hang_up).
+    Keyword matching on purpose — explainable, offline, no AI deciding actions.
+    Keywords cover English, Hinglish, Hindi and Telugu script (Whisper output)."""
+    t = " " + heard.lower().strip(" .,!?") + " "
+
+    def has(*words):
+        return any(w in t for w in words)
+
+    if has("goodbye", "good bye", " bye ", "thank you", "thanks", "alvida", "dhanyavad",
+           "अलविदा", "धन्यवाद", "వీడ్కోలు", "సెలవు", "ధన్యవాద"):
+        return vreply("goodbye"), True
+    if has("mist off", "water off", "stop mist", "mist stop", "turn off", "spray off",
+           "band karo", "pani band", "stop water", "पानी बंद", "बंद करो", "బంద్",
+           "నీళ్లు ఆపు", "ఆపు", "ఆపేయ"):
+        if not state["mist_on"]:
+            return vreply("already_off"), False
+        if arduino_send("MIST_OFF"):
+            set_mist_state(False)
+            log_event("MIST_OFF", "voice call")
+            return vreply("mist_off"), False
+        return vreply("no_arduino"), False
+    if has("mist on", "water on", "start mist", "mist start", "turn on", "spray on",
+           "pani chalu", "mist chalao", "start water", "पानी चालू", "पानी दो",
+           "चालू करो", "నీళ్లు పెట్టు", "నీళ్లు ఇవ్వు", "పంపు ఆన్"):
+        if state["mist_on"]:
+            return vreply("already_on"), False
+        if arduino_send("MIST_ON"):
+            set_mist_state(True)
+            log_event("MIST_ON", "voice call")
+            return vreply("mist_on"), False
+        return vreply("no_arduino"), False
+    if has("spray", "burst", "thoda pani", "छिड़काव", "నీళ్లు చల్లు"):
+        if arduino_send("PING"):
+            threading.Thread(target=mist_burst, args=(MIST_BURST_SECONDS, "voice call"),
+                             daemon=True).start()
+            return vreply("spraying"), False
+        return vreply("no_arduino"), False
+    if has("video", "live", "show me", "show the farm", "dikhao", "dikha do",
+           "दिखाओ", "वीडियो", "చూపించు", "వీడియో"):
+        return vreply("video_wait"), "video"
+    if has("photo", "picture", "camera", "photu", "snapshot", "फोटो", "तस्वीर",
+           "ఫోటో", "ఫొటో"):
+        threading.Thread(target=safe_handle, args=("/photo",), daemon=True).start()
+        return vreply("photo"), False
+    if has("unlock", "lockdown off", "guard off", "alarm off", "लॉकडाउन बंद",
+           "లాక్ డౌన్ ఆఫ్"):
+        settings["lockdown"] = False
+        save_settings()
+        return vreply("lockdown_off"), False
+    if has("lockdown", "lock down", "guard on", "alarm on", "secure", "लॉकडाउन",
+           "లాక్ డౌన్"):
+        settings["lockdown"] = True
+        save_settings()
+        return vreply("lockdown_on"), False
+    if has("status", "update", "report", "reading", "how are", "kaisa", "kya hal",
+           "स्टेटस", "हाल", "स्थिति", "స్టేటస్", "పరిస్థితి", "ఎలా ఉంది"):
+        return spoken_status(), False
+    return vreply("fallback", h=heard), False
 
 
 # --------------------------------------------------------------------------
@@ -1212,8 +1758,11 @@ MENU_KEYBOARD = {"inline_keyboard": [
      {"text": "💨 Mist OFF", "callback_data": "/mist_off"},
      {"text": "⏱ Spray 10s", "callback_data": "/spray"}],
     [{"text": "📷 Photo", "callback_data": "/photo"},
-     {"text": "🎥 Video 5s", "callback_data": "/video"}],
-    [{"text": "🌐 Language", "callback_data": "/lang"}],
+     {"text": "🎥 Video 5s", "callback_data": "/video"},
+     {"text": "🌱 Crop check", "callback_data": "/crop"}],
+    [{"text": "🌐 Language", "callback_data": "/lang"},
+     {"text": "🔊 Voice update", "callback_data": "/voice"},
+     {"text": "📞 Call me", "callback_data": "/call"}],
     [{"text": "🤖 Auto-mist ON", "callback_data": "/auto_mist on"},
      {"text": "🤖 Auto-mist OFF", "callback_data": "/auto_mist off"},
      {"text": "🌦 Weather", "callback_data": "/weather"}],
@@ -1230,6 +1779,8 @@ ALIASES = {
     "/rain skip on": "/rain_skip on", "/rain skip off": "/rain_skip off",
     "/rainskip on": "/rain_skip on", "/rainskip off": "/rain_skip off",
     "/forecast": "/weather",
+    "/scan": "/crop", "/plant": "/crop", "/identify": "/crop",
+    "/crop check": "/crop", "/cropcheck": "/crop",
     "/start": "/setup_or_help", "/keyboard": "/menu", "/buttons": "/menu",
     "/wizard": "/setup", "/settings": "/setup",
     "/language": "/lang", "/telugu": "/lang te", "/english": "/lang en",
@@ -1361,6 +1912,57 @@ def setup_apply(val):
     setup_send_step()
 
 
+def handle_crop():
+    """Point the camera at a plant: on-device ID (TFLite MobileNet, Pi-class
+    light) + water advice from the live soil reading. No cloud, no API key."""
+    try:
+        import crop_vision
+    except Exception as e:
+        send_telegram_message(f"🌱 Crop vision module failed to load: {e}")
+        return
+    if not crop_vision.available():
+        send_telegram_message("🌱 Crop vision not set up — models/plants_V1.tflite or the "
+                              "TFLite runtime is missing on this machine.")
+        return
+    if not camera_online() and not detect_local_camera():
+        send_telegram_message("📷 No camera found — plug the webcam into the Mac (or start the Windows service).")
+        return
+    send_telegram_message("🌱 Looking at your crop...")
+    photo_bytes = request_capture("photo", timeout=45)
+    if not photo_bytes:
+        send_telegram_message("Could not capture a photo for crop check.")
+        return
+    try:
+        results = crop_vision.identify(photo_bytes)
+    except Exception as e:
+        print(f"[crop] identify failed: {e}", file=sys.stderr)
+        send_telegram_message(f"🌱 Crop check failed: {e}")
+        return
+    if not results:
+        send_telegram_photo(photo_bytes, caption="🌱 I can't see a plant in this frame. "
+                            "Bring the leaves/flowers closer to the camera and try /crop again.")
+        return
+    with state_lock:
+        moisture, temp = state["moisture"], state["temp"]
+    name, conf = results[0]
+    if conf < 0.15:
+        guesses = "\n".join(f"• {crop_vision.display_name(n)} ({c:.0%})" for n, c in results)
+        send_telegram_photo(photo_bytes, caption=(
+            "🌱 I'm not sure — best guesses:\n" + guesses +
+            "\n\nFill the frame with leaves or flowers (not the pot) and try /crop again."))
+        return
+    advice, spray_secs = crop_vision.water_advice(name, moisture, temp)
+    caption = f"{advice}\n\n(confidence {conf:.0%} — {now_str()})"
+    kb = None
+    if spray_secs:
+        kb = {"inline_keyboard": [[{"text": f"💦 Spray {spray_secs}s now",
+                                    "callback_data": f"/spray {spray_secs}"}]]}
+    cap = demo_capture()
+    send_telegram_photo(photo_bytes, caption=caption)
+    if kb and cap is None:
+        send_telegram_message("Want me to water it?", reply_markup=kb)
+
+
 def handle_command(text):
     """Run one normalised command. Safe to call from the poll loop or a button."""
     parts = text.split()
@@ -1379,6 +1981,18 @@ def handle_command(text):
         send_telegram_message("AgriNova control panel:", reply_markup=MENU_KEYBOARD)
     elif cmd == "/about":
         send_telegram_message(ABOUT_TEXT)
+    elif cmd == "/kiosk":
+        send_telegram_message(kiosk_urls_text())
+    elif cmd == "/call":
+        send_telegram_message("📞 Calling you now...")
+        call_farmer(text.split(" ", 1)[1] if " " in text else call_text("test"))
+    elif cmd == "/voice":
+        if " " in text:
+            send_telegram_voice(text.split(" ", 1)[1])
+        else:
+            send_telegram_voice(spoken_status())
+    elif cmd == "/crop":
+        handle_crop()
     elif cmd == "/status":
         send_telegram_message(build_status())
     elif cmd == "/summary":
@@ -1711,8 +2325,16 @@ def telegram_reply_loop():
                 chat_id = str(cb.get("message", {}).get("chat", {}).get("id", ""))
                 from_id = str(cb.get("from", {}).get("id", ""))
                 if chat_id not in ALLOWED_CHAT_IDS and from_id not in ALLOWED_CHAT_IDS:
-                    print(f"[telegram] ignored button press from {from_id}")
-                    answer_callback(cb["id"], "Not authorised.")
+                    vtext = normalise(cb.get("data", ""))
+                    vroot = vtext.split()[0] if vtext.split() else ""
+                    if OPEN_MODE and vroot in OPEN_COMMANDS:
+                        print(f"[telegram] OPEN MODE button from {from_id}: {vtext!r}")
+                        answer_callback(cb["id"])
+                        threading.Thread(target=run_as_visitor, args=(vtext, chat_id),
+                                         daemon=True).start()
+                    else:
+                        print(f"[telegram] ignored button press from {from_id}")
+                        answer_callback(cb["id"], "Not authorised.")
                     continue
                 text = normalise(cb.get("data", ""))
                 print(f"[telegram] button: {text!r}")
@@ -1724,10 +2346,17 @@ def telegram_reply_loop():
             if not message:
                 continue
             chat_id = str(message.get("chat", {}).get("id", ""))
-            if chat_id not in ALLOWED_CHAT_IDS:
-                print(f"[telegram] ignored message from unauthorised chat {chat_id}: {message.get('text')!r}")
-                continue
             raw_text = message.get("text", "")
+            if chat_id not in ALLOWED_CHAT_IDS:
+                norm = normalise(raw_text)
+                root = norm.split()[0] if norm.split() else ""
+                if OPEN_MODE and root in OPEN_COMMANDS:
+                    print(f"[telegram] OPEN MODE visitor {chat_id}: {norm!r}")
+                    threading.Thread(target=run_as_visitor, args=(norm, chat_id),
+                                     daemon=True).start()
+                else:
+                    print(f"[telegram] ignored message from unauthorised chat {chat_id}: {raw_text!r}")
+                continue
             print(f"[telegram] received: {raw_text!r}")
             threading.Thread(target=safe_handle, args=(normalise(raw_text),), daemon=True).start()
 
@@ -1736,7 +2365,23 @@ def telegram_reply_loop():
 # Main: FPGA UART loop
 # --------------------------------------------------------------------------
 def main():
+    global farm_phone
     load_settings()
+    try:
+        import farm_caller
+        if farm_caller.session_exists():
+            farm_phone = farm_caller.FarmPhone(
+                status_cb=lambda: (spoken_status(), cur_lang()),
+                command_cb=voice_command,
+                allowed={int(CHAT_ID)})
+            if farm_phone.start():
+                print("[phone] farm phone online — call the AgriNova Farm account to hear live status")
+            else:
+                print("[phone] farm phone failed to start — emergency calls are OFF until restart", file=sys.stderr)
+                farm_phone = None
+    except Exception as e:
+        print(f"[phone] farm phone unavailable: {e}", file=sys.stderr)
+        farm_phone = None
     threading.Thread(target=listen_arduino, args=(None,), daemon=True).start()
     threading.Thread(target=camera_relay_server, daemon=True).start()
     threading.Thread(target=telegram_reply_loop, daemon=True).start()
@@ -1744,10 +2389,15 @@ def main():
     threading.Thread(target=auto_mist_loop, daemon=True).start()
     threading.Thread(target=scheduler_loop, daemon=True).start()
 
+    if OPEN_MODE:
+        print("[bridge] ⚠️  OPEN MODE — anyone on Telegram can use the safe demo commands")
     send_telegram_message(
-        f"🟢 AgriNova bridge online — {now_str()}\n"
+        ("⚠️ OPEN MODE is ON — anyone can use the demo commands. Restart without the flag after the event!\n" if OPEN_MODE else "")
+        + f"🟢 AgriNova bridge online — {now_str()}\n"
         f"🔒 Lockdown {'ON' if settings['lockdown'] else 'OFF'} | 🤖 Auto-mist {'ON' if settings['auto_mist'] else 'OFF'} "
-        f"| ⏰ {len(settings['schedules'])} schedule(s)\nSend /help or /menu.")
+        f"| ⏰ {len(settings['schedules'])} schedule(s)\nSend /help or /menu.\n"
+        + ("📞 You can also CALL the farm — dial \"AgriNova Farm\" anytime to hear the live status.\n"
+           if farm_phone is not None else "") + kiosk_urls_text())
     log_event("BRIDGE_START")
 
     ser = None

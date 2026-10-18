@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgriNova Screen Portal</title>
+<style>
+:root{--dg:#1B5E20;--mg:#2E7D32;--lg:#81C784;--pale:#DFF0D8;--mut:#4E6E52}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#F4F9F1;color:#12220f;
+  padding:18px;max-width:760px;margin:0 auto}
+h1{font-size:24px;font-weight:800;color:var(--dg)}
+.sub{font-size:13px;color:var(--mut);font-weight:600;margin:4px 0 18px}
+.card{background:#fff;border-radius:16px;padding:16px;margin-bottom:14px;box-shadow:0 8px 24px rgba(18,34,15,.08)}
+.head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.head h2{font-size:17px;font-weight:800;color:var(--dg);flex:1}
+.dot{width:11px;height:11px;border-radius:50%;background:#c3cfc3}
+.dot.on{background:#2fae4e;box-shadow:0 0 0 4px rgba(47,174,78,.18)}
+.meta{font-size:12.5px;color:var(--mut);font-weight:700}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+button{border:1.5px solid var(--pale);background:#F7FBF5;color:var(--dg);font:inherit;font-size:14px;
+  font-weight:800;padding:10px 14px;border-radius:11px;cursor:pointer}
+button:active{transform:scale(.97)}
+button.cur{background:var(--dg);color:#fff;border-color:var(--dg)}
+button.danger{background:#FDEDEC;border-color:#f3c2be;color:#B3261E}
+#tkrow{display:flex;gap:8px}
+#tktext{flex:1;border:2px solid var(--pale);border-radius:11px;padding:10px 14px;font:inherit;font-size:15px;
+  background:#F7FBF5;outline:none}
+#tktext:focus{border-color:var(--lg)}
+.quick{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+.quick button{font-size:12.5px;padding:7px 10px}
+#banner{font-size:12.5px;font-weight:800;color:#B3261E;margin-top:8px;display:none}
+</style>
+</head>
+<body>
+<h1>🌿 Screen Portal</h1>
+<div class="sub">Push what each stall screen shows. "Auto" hands the show back to the screen.</div>
+
+<div class="card" id="c-dell">
+  <div class="head"><h2>🖥 Dell — DemoLoop (portrait)</h2><span class="meta" id="dell-meta">—</span><span class="dot" id="dell-dot"></span></div>
+  <div class="btns" id="dell-btns">
+    <button data-m="auto">Auto</button>
+    <button data-m="show">Restart show</button>
+    <button data-m="explore">Explore menu</button>
+    <button data-m="panel:try">Live chat</button>
+    <button data-m="panel:how">How it works</button>
+    <button data-m="panel:rules">The logic</button>
+    <button data-m="panel:build">The build</button>
+    <button data-m="panel:impact">The impact</button>
+    <button data-m="panel:home">QRs</button>
+  </div>
+</div>
+
+<div class="card" id="c-hp">
+  <div class="head"><h2>💻 HP — Billboard (landscape)</h2><span class="meta" id="hp-meta">—</span><span class="dot" id="hp-dot"></span></div>
+  <div class="btns" id="hp-btns">
+    <button data-m="auto">Auto cycle</button>
+    <button data-m="show">🖼 Showcase</button>
+    <button data-m="live">📈 Live graph</button>
+    <button data-m="qr">📦 QR card</button>
+  </div>
+</div>
+
+<div class="card">
+  <div class="head"><h2>📢 Takeover — both screens</h2></div>
+  <div id="tkrow">
+    <input id="tktext" placeholder="Big message on both screens…" maxlength="120">
+    <button class="cur" onclick="setTakeover(document.getElementById('tktext').value)">Push</button>
+    <button class="danger" onclick="setTakeover('')">Clear</button>
+  </div>
+  <div class="quick">
+    <button onclick="setTakeover('Live demo in 2 minutes — stay with us! 🌿')">Demo in 2 min</button>
+    <button onclick="setTakeover('Judging in progress 🤫')">Judging</button>
+    <button onclick="setTakeover('Back in 10 minutes — scan the flyers meanwhile!')">Back in 10</button>
+    <button onclick="setTakeover('Namaste, judges! Ask us anything. 🙏')">Welcome judges</button>
+  </div>
+  <div id="banner"></div>
+</div>
+
+<script>
+const API = `http://${location.hostname}:5001`;
+async function ctl(body){
+  try{await fetch(API+"/screenctl",{method:"POST",headers:{"Content-Type":"application/json"},
+       body:JSON.stringify(body)});}catch(e){}
+  refresh();
+}
+function setTakeover(t){ctl({takeover:t||""});if(!t)document.getElementById("tktext").value="";}
+document.querySelectorAll("#dell-btns button").forEach(b=>b.addEventListener("click",()=>ctl({screen:"dell",mode:b.dataset.m})));
+document.querySelectorAll("#hp-btns button").forEach(b=>b.addEventListener("click",()=>ctl({screen:"hp",mode:b.dataset.m})));
+
+async function refresh(){
+  try{
+    const j=await fetch(API+"/screenstatus").then(r=>r.json());
+    for(const s of ["hp","dell"]){
+      document.getElementById(s+"-dot").classList.toggle("on",!!j[s].online);
+      document.getElementById(s+"-meta").textContent=
+        (j[s].online?`online · showing: ${j[s].scene||"…"}`:"offline")+` · mode: ${j[s].mode}`;
+      document.querySelectorAll(`#${s}-btns button`).forEach(b=>b.classList.toggle("cur",b.dataset.m===j[s].mode));
+    }
+    const bn=document.getElementById("banner");
+    if(j.takeover){bn.style.display="block";bn.textContent=`TAKEOVER ACTIVE: "${j.takeover}"`;}
+    else bn.style.display="none";
+  }catch(e){
+    for(const s of ["hp","dell"])document.getElementById(s+"-meta").textContent="bridge unreachable";
+  }
+}
+refresh();
+setInterval(refresh,1000);
+</script>
+</body>
+</html>
