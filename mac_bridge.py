@@ -25,7 +25,10 @@ import urllib.parse
 import urllib.error
 from collections import deque
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, "frozen", False):
+    BASE_DIR = os.path.dirname(sys.executable)   # PyInstaller .exe: data sits beside it
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(BASE_DIR, "agrinova_state.json")
 LOG_FILE = os.path.join(BASE_DIR, "agrinova_log.csv")
 EVENT_FILE = os.path.join(BASE_DIR, "agrinova_events.csv")
@@ -370,18 +373,43 @@ def log_event(kind, detail=""):
 # --------------------------------------------------------------------------
 # Serial port discovery
 # --------------------------------------------------------------------------
+# Cross-platform serial discovery. On Windows the ports are COMn (no
+# "usbserial"/"usbmodem" names), so we match by USB vendor id / description.
+# Explicit override always wins: set AGRINOVA_FPGA_PORT / AGRINOVA_ARDUINO_PORT
+# (e.g. COM3) from Device Manager — the 100%-reliable path on the cube.
+FPGA_PORT_ENV = "AGRINOVA_FPGA_PORT"
+ARDUINO_PORT_ENV = "AGRINOVA_ARDUINO_PORT"
+FPGA_USB_VIDS = {0x0403, 0x10C4, 0x1A86}   # FTDI, CP210x, CH340 (USB-serial bridges)
+ARDUINO_USB_VIDS = {0x2341, 0x2A03}        # genuine Arduino UNO / Mega
+
+
 def find_serial_port():
+    override = os.environ.get(FPGA_PORT_ENV)
+    if override:
+        return override
     import serial.tools.list_ports
     try:
-        ports = serial.tools.list_ports.comports()
-        for port, desc, hwid in ports:
-            if "usbserial" in port:
-                return port
-        if glob.glob(SERIAL_PORT_HINT):
-            return SERIAL_PORT_HINT
-        candidates = sorted(glob.glob("/dev/cu.usbserial-*"))
-        if candidates:
-            return candidates[0]
+        ports = list(serial.tools.list_ports.comports())
+        if sys.platform == "darwin":
+            for port, desc, hwid in ports:
+                if "usbserial" in port:
+                    return port
+            if glob.glob(SERIAL_PORT_HINT):
+                return SERIAL_PORT_HINT
+            candidates = sorted(glob.glob("/dev/cu.usbserial-*"))
+            if candidates:
+                return candidates[0]
+            return None
+        # Windows / Linux: the FPGA board is an FTDI-style USB-serial bridge.
+        # Prefer a bridge VID that isn't the Arduino, then fall back to desc.
+        for p in ports:
+            if p.vid in FPGA_USB_VIDS and p.vid not in ARDUINO_USB_VIDS:
+                return p.device
+        for p in ports:
+            d = (p.description or "").lower()
+            if "arduino" not in d and any(k in d for k in
+                    ("ftdi", "usb serial", "usb-serial", "ch340", "cp210")):
+                return p.device
     except Exception as e:
         print(f"[bridge] port enumeration failed: {e}", file=sys.stderr)
     return None
@@ -389,14 +417,31 @@ def find_serial_port():
 
 def find_arduino_port():
     """Find Arduino on a different port (not FPGA)"""
+    override = os.environ.get(ARDUINO_PORT_ENV)
+    if override:
+        return override
     try:
         import serial.tools.list_ports
-        ports = serial.tools.list_ports.comports()
+        ports = list(serial.tools.list_ports.comports())
         fpga_port = find_serial_port()
-        for port, desc, hwid in ports:
-            if ("usbmodem" in port or "usbserial" in port) and port != fpga_port:
-                print(f"[bridge] detected Arduino on {port} ({desc})")
-                return port
+        if sys.platform == "darwin":
+            for port, desc, hwid in ports:
+                if ("usbmodem" in port or "usbserial" in port) and port != fpga_port:
+                    print(f"[bridge] detected Arduino on {port} ({desc})")
+                    return port
+            return None
+        # Windows / Linux: prefer a genuine-Arduino VID, else any USB-serial
+        # device that isn't the FPGA port.
+        for p in ports:
+            if p.vid in ARDUINO_USB_VIDS and p.device != fpga_port:
+                print(f"[bridge] detected Arduino on {p.device} ({p.description})")
+                return p.device
+        for p in ports:
+            d = (p.description or "").lower()
+            if p.device != fpga_port and any(k in d for k in
+                    ("arduino", "usb serial device", "ch340", "usb-serial")):
+                print(f"[bridge] detected Arduino on {p.device} ({p.description})")
+                return p.device
     except Exception as e:
         print(f"[bridge] Arduino port search failed: {e}", file=sys.stderr)
     return None
@@ -532,24 +577,44 @@ VOICE_FALLBACK = {"en": "Aman (English (India))", "hi": "Lekha",
 
 
 def tts_to_file(text, out_path, lang="en"):
-    """Neural TTS via edge-tts; falls back to macOS `say` offline."""
+    """Neural TTS via edge-tts; platform voice as the offline fallback."""
+    voice = VOICE_NEURAL.get(lang, VOICE_NEURAL["en"])
     try:
-        subprocess.run([sys.executable, "-m", "edge_tts",
-                        "--voice", VOICE_NEURAL.get(lang, VOICE_NEURAL["en"]),
-                        "--text", text, "--write-media", out_path],
-                       check=True, timeout=30, capture_output=True)
+        if getattr(sys, "frozen", False):
+            # No `python -m edge_tts` inside a frozen exe — use the module API.
+            import asyncio, edge_tts
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(edge_tts.Communicate(text, voice).save(out_path))
+            finally:
+                loop.close()
+        else:
+            subprocess.run([sys.executable, "-m", "edge_tts", "--voice", voice,
+                            "--text", text, "--write-media", out_path],
+                           check=True, timeout=30, capture_output=True)
         return True
     except Exception as e:
-        print(f"[voice] edge-tts failed ({e}); using macOS voice", file=sys.stderr)
+        print(f"[voice] edge-tts failed ({e}); trying offline voice", file=sys.stderr)
     try:
-        subprocess.run(["say", "-v", VOICE_FALLBACK.get(lang, VOICE_FALLBACK["en"]),
-                        "-o", out_path + ".aiff", text],
-                       check=True, timeout=30, capture_output=True)
-        os.replace(out_path + ".aiff", out_path)
-        return True
+        if sys.platform == "darwin":
+            subprocess.run(["say", "-v", VOICE_FALLBACK.get(lang, VOICE_FALLBACK["en"]),
+                            "-o", out_path + ".aiff", text],
+                           check=True, timeout=30, capture_output=True)
+            os.replace(out_path + ".aiff", out_path)
+            return True
+        elif sys.platform.startswith("win"):
+            wav = out_path + ".wav"
+            ps = ("Add-Type -AssemblyName System.Speech; "
+                  "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+                  f"$s.SetOutputToWaveFile('{wav}'); "
+                  "$s.Speak([Console]::In.ReadToEnd()); $s.Dispose()")
+            subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                           input=text, text=True, check=True, timeout=30)
+            os.replace(wav, out_path)
+            return True
     except Exception as e:
-        print(f"[voice] say failed too: {e}", file=sys.stderr)
-        return False
+        print(f"[voice] offline voice failed: {e}", file=sys.stderr)
+    return False
 
 
 def send_telegram_voice(text, caption="", lang=None):
@@ -688,36 +753,80 @@ def camera_online():
 LOCAL_CAM_HINT = "C170"           # preferred device-name substring
 local_cam = {"video": None, "audio": None, "checked": 0.0}
 
+# ffmpeg capture backend per OS: macOS=avfoundation, Windows=dshow, Linux=v4l2.
+CAM_FMT = ("dshow" if sys.platform.startswith("win")
+           else "avfoundation" if sys.platform == "darwin"
+           else "v4l2")
+
+
+def _cam_input(dev, audio=None):
+    """Build the ffmpeg -i source token for the current OS's capture backend."""
+    if CAM_FMT == "dshow":
+        s = f"video={dev}"
+        if audio:
+            s += f":audio={audio}"
+        return s
+    if CAM_FMT == "avfoundation":
+        return f"{dev}:{audio}" if audio else dev
+    return dev  # v4l2: dev is a path like /dev/video0
+
 
 def detect_local_camera():
-    """Find an avfoundation video (and audio) device. Cached for 60 s."""
+    """Find a camera (and audio) device for the current OS. Cached for 60 s."""
     if time.time() - local_cam["checked"] < 60:
         return local_cam["video"]
     local_cam["checked"] = time.time()
     try:
-        r = subprocess.run(["ffmpeg", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
-                           capture_output=True, text=True, timeout=15)
-        out = r.stderr or ""
-        section = None
-        video, audio, first_video = None, None, None
-        for line in out.splitlines():
-            if "video devices" in line:
-                section = "v"; continue
-            if "audio devices" in line:
-                section = "a"; continue
-            m = re.search(r"\[(\d+)\] (.+)$", line)
-            if not m:
-                continue
-            idx, name = m.group(1), m.group(2)
-            if section == "v":
-                if first_video is None and "Capture screen" not in name:
-                    first_video = name
-                if LOCAL_CAM_HINT.lower() in name.lower():
-                    video = name
-            elif section == "a" and audio is None and LOCAL_CAM_HINT.lower() in name.lower():
-                audio = name
-        local_cam["video"] = video or first_video
-        local_cam["audio"] = audio
+        if CAM_FMT == "dshow":
+            # Windows: ffmpeg lists dshow devices on stderr, names in quotes,
+            # tagged (video)/(audio).
+            r = subprocess.run(["ffmpeg", "-f", "dshow", "-list_devices", "true",
+                                "-i", "dummy"], capture_output=True, text=True, timeout=15)
+            out = r.stderr or ""
+            video, audio, first_video = None, None, None
+            for line in out.splitlines():
+                m = re.search(r'"([^"]+)"\s*\((video|audio)\)', line)
+                if not m:
+                    continue
+                name, kind = m.group(1), m.group(2)
+                if kind == "video":
+                    if first_video is None:
+                        first_video = name
+                    if LOCAL_CAM_HINT.lower() in name.lower():
+                        video = name
+                elif kind == "audio" and audio is None and LOCAL_CAM_HINT.lower() in name.lower():
+                    audio = name
+            local_cam["video"] = video or first_video
+            local_cam["audio"] = audio
+        elif CAM_FMT == "v4l2":
+            # Linux: pick the first /dev/video* that exists.
+            vids = sorted(glob.glob("/dev/video*"))
+            local_cam["video"] = vids[0] if vids else None
+            local_cam["audio"] = None
+        else:
+            r = subprocess.run(["ffmpeg", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
+                               capture_output=True, text=True, timeout=15)
+            out = r.stderr or ""
+            section = None
+            video, audio, first_video = None, None, None
+            for line in out.splitlines():
+                if "video devices" in line:
+                    section = "v"; continue
+                if "audio devices" in line:
+                    section = "a"; continue
+                m = re.search(r"\[(\d+)\] (.+)$", line)
+                if not m:
+                    continue
+                idx, name = m.group(1), m.group(2)
+                if section == "v":
+                    if first_video is None and "Capture screen" not in name:
+                        first_video = name
+                    if LOCAL_CAM_HINT.lower() in name.lower():
+                        video = name
+                elif section == "a" and audio is None and LOCAL_CAM_HINT.lower() in name.lower():
+                    audio = name
+            local_cam["video"] = video or first_video
+            local_cam["audio"] = audio
         if local_cam["video"]:
             print(f"[camera] local device: {local_cam['video']!r} audio: {local_cam['audio']!r}")
     except Exception as e:
@@ -738,41 +847,133 @@ def local_capture(kind, duration=5):
             os.remove(out)
     except OSError:
         pass
-    src = dev if kind == "photo" or not local_cam["audio"] else f"{dev}:{local_cam['audio']}"
+    want_audio = (kind != "photo") and bool(local_cam["audio"])
+    src = _cam_input(dev, local_cam["audio"] if want_audio else None)
+    src_video_only = _cam_input(dev)
+
+    def _has_audio(s):
+        return ("audio=" in s) if CAM_FMT == "dshow" else (":" in s and CAM_FMT == "avfoundation")
+
     tmo = 25 if kind == "photo" else duration + 25
     # Not every camera supports 640x480@30 (the built-in "Neo" camera only does
     # 1080x1920): try the cheap mode first, then the device's own default mode,
     # each with audio and then video-only.
-    attempts = []
-    for size_opts in (["-framerate", "30", "-video_size", "640x480"], []):
-        for s in dict.fromkeys([src, dev]):
-            attempts.append((size_opts, s))
-    r = None
-    for size_opts, s in attempts:
-        cmd = ["ffmpeg", "-y", "-f", "avfoundation"] + size_opts + ["-i", s]
+    def try_once(size_opts, s):
+        cmd = ["ffmpeg", "-y", "-f", CAM_FMT] + size_opts + ["-i", s]
         if kind == "photo":
             cmd += ["-frames:v", "1", "-q:v", "4", out]
         else:
             cmd += ["-t", str(duration), "-c:v", "libx264", "-preset", "ultrafast",
                     "-vf", "scale=-2:720"]
-            cmd += (["-c:a", "aac"] if ":" in s else []) + [out]
+            cmd += (["-c:a", "aac"] if _has_audio(s) else []) + [out]
         try:
-            r = subprocess.run(cmd, capture_output=True, timeout=tmo)
+            return subprocess.run(cmd, capture_output=True, timeout=tmo)
         except subprocess.TimeoutExpired:
             print("[camera] local capture timed out — check camera permission for the "
                   "terminal (System Settings → Privacy & Security → Camera)", file=sys.stderr)
-            continue
         except Exception as e:
             print(f"[camera] local capture error: {e}", file=sys.stderr)
-            continue
-        if r.returncode == 0 and os.path.exists(out) and os.path.getsize(out) > 0:
+        return None
+
+    def grab(r):
+        if r is not None and r.returncode == 0 \
+                and os.path.exists(out) and os.path.getsize(out) > 0:
             with open(out, "rb") as f:
-                data = f.read()
+                return f.read()
+        return None
+
+    attempts = []
+    for size_opts in (["-framerate", "30", "-video_size", "640x480"], []):
+        for s in dict.fromkeys([src, src_video_only]):
+            attempts.append((size_opts, s))
+    r = None
+    for size_opts, s in attempts:
+        r = try_once(size_opts, s)
+        data = grab(r)
+        if data:
             print(f"[camera] local {kind} OK ({len(data)} bytes)")
             return data
+    # Generic modes rejected: avfoundation wants an EXACT advertised mode for
+    # some cameras (the built-in "Neo" camera only does portrait 1080x1920).
+    # ffmpeg's failure output lists the device's real modes — retry each one.
+    err = (r.stderr or b"").decode("utf-8", "replace") if r is not None else ""
+    modes = dict.fromkeys(re.findall(r"(\d+)x(\d+)@\[[\d.]+ ([\d.]+)\]fps", err))
+    for w_, h_, fmax in modes:
+        fr = str(int(float(fmax)))
+        for s in dict.fromkeys([src, src_video_only]):
+            r2 = try_once(["-framerate", fr, "-video_size", f"{w_}x{h_}"], s)
+            data = grab(r2)
+            if data:
+                print(f"[camera] local {kind} OK at {w_}x{h_}@{fr}fps ({len(data)} bytes)")
+                return data
     if r is not None:
         print(f"[camera] local {kind} failed: {(r.stderr or b'')[-200:]!r}", file=sys.stderr)
     return None
+
+
+def local_live_stream(port=13999):
+    """Start ffmpeg streaming the local camera live as MPEG-TS to localhost UDP
+    (consumed by farm_caller inside a call). Returns (Popen, port) or (None, None).
+    The caller owns the process and must kill() it when done."""
+    dev = detect_local_camera()
+    if not dev:
+        return None, None
+    url = f"udp://127.0.0.1:{port}?pkt_size=1316"
+
+    def spawn(size_opts):
+        # 480p/20fps, capped bitrate, keyframe every second with repeated
+        # headers: keeps encode cheap and lets the receiver lock on fast.
+        cmd = (["ffmpeg", "-hide_banner", "-nostats", "-loglevel", "error",
+                "-f", CAM_FMT] + size_opts +
+               ["-i", _cam_input(dev), "-an", "-r", "20", "-c:v", "libx264",
+                "-preset", "ultrafast", "-tune", "zerolatency",
+                "-x264-params", "keyint=20:min-keyint=20:scenecut=0:repeat-headers=1",
+                "-b:v", "1000k", "-maxrate", "1200k", "-bufsize", "1200k",
+                # standard 640x480 frame (portrait input gets letterboxed):
+                # odd scaled widths (e.g. 270) corrupt the decode downstream
+                "-vf", "scale=640:480:force_original_aspect_ratio=decrease,"
+                       "pad=640:480:(ow-iw)/2:(oh-ih)/2",
+                "-pix_fmt", "yuv420p", "-f", "mpegts", url])
+        try:
+            return subprocess.Popen(cmd, stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.PIPE)
+        except Exception as e:
+            print(f"[camera] live spawn failed: {e}", file=sys.stderr)
+            return None
+
+    def alive(p, label):
+        time.sleep(1.0)
+        if p.poll() is None:
+            print(f"[camera] live stream up ({label}) on udp://127.0.0.1:{port}")
+            return True
+        return False
+
+    # A mode that worked before works again — skip the failing attempts.
+    cached = local_cam.get("live_opts")
+    if cached is not None:
+        p = spawn(cached)
+        if p and alive(p, "cached mode"):
+            return p, port
+    err = ""
+    for size_opts in (["-framerate", "30", "-video_size", "640x480"], []):
+        p = spawn(size_opts)
+        if not p:
+            return None, None
+        if alive(p, "generic mode"):
+            local_cam["live_opts"] = size_opts
+            return p, port
+        err = (p.stderr.read() or b"").decode("utf-8", "replace")
+    # Same exact-mode negotiation as local_capture (see comment there).
+    for w_, h_, fmax in dict.fromkeys(re.findall(r"(\d+)x(\d+)@\[[\d.]+ ([\d.]+)\]fps", err)):
+        opts = ["-framerate", str(int(float(fmax))), "-video_size", f"{w_}x{h_}"]
+        p = spawn(opts)
+        if not p:
+            return None, None
+        if alive(p, f"{w_}x{h_}"):
+            local_cam["live_opts"] = opts
+            return p, port
+    print("[camera] live stream failed in all modes", file=sys.stderr)
+    return None, None
 
 
 def request_capture(kind, duration=None, timeout=60):

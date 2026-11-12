@@ -1,0 +1,48 @@
+name: Build Windows EXE
+
+# Builds a standalone Windows .exe of the AgriNova bridge (bot scope).
+# Trigger manually from the Actions tab, or on a push that touches the bridge.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "mac_bridge.py"
+      - "crop_vision.py"
+      - "farm_caller.py"
+      - "build_exe.py"
+      - ".github/workflows/build-windows-exe.yml"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install bot dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller pyserial requests edge-tts qrcode matplotlib numpy pillow
+          # crop-vision runtime: optional, don't fail the build if no Windows wheel
+          python -m pip install ai-edge-litert || echo "ai-edge-litert unavailable on Windows runner — /crop will be disabled in this build"
+
+      - name: Build the exe
+        run: python build_exe.py
+
+      - name: Package
+        shell: bash
+        run: |
+          cd dist
+          7z a -tzip AgriNova-windows.zip AgriNova >/dev/null
+          ls -la
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AgriNova-windows-exe
+          path: dist/AgriNova-windows.zip
+          if-no-files-found: error

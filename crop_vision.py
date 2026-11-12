@@ -16,6 +16,7 @@ Files expected next to this module:
 import csv
 import io
 import os
+import sys
 
 import numpy as np
 from PIL import Image
@@ -33,7 +34,10 @@ except ImportError:
         except ImportError:
             pass
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, "frozen", False):
+    BASE_DIR = os.path.dirname(sys.executable)   # PyInstaller .exe: data sits beside it
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "models", "plants_V1.tflite")
 LABELS_PATH = os.path.join(BASE_DIR, "models", "plants_labels.csv")
 COMMON_PATH = os.path.join(BASE_DIR, "models", "plants_common.csv")  # offline, built once

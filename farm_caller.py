@@ -26,7 +26,10 @@ import tempfile
 import threading
 
 SESSION = "agrinova_farm"          # -> agrinova_farm.session next to this file
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, "frozen", False):
+    BASE_DIR = os.path.dirname(sys.executable)   # PyInstaller .exe: data sits beside it
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Telegram app credentials live in agrinova_secrets.json (gitignored)
 import json as _json
 with open(os.path.join(BASE_DIR, "agrinova_secrets.json")) as _f:
@@ -63,6 +66,11 @@ PROMPTS = {
         "en": "I could not reach the camera.",
         "hi": "कैमरा नहीं मिला।",
         "te": "కెమెరా దొరకలేదు.",
+    },
+    "live_intro": {
+        "en": "I'm getting a live view of your crops...",
+        "hi": "मैं आपकी फसलों का लाइव नज़ारा ला रहा हूँ...",
+        "te": "మీ పంటల ప్రత్యక్ష దృశ్యం తెస్తున్నాను...",
     },
 }
 
@@ -114,6 +122,27 @@ def session_exists():
     return os.path.exists(os.path.join(BASE_DIR, SESSION + ".session"))
 
 
+def wav_seconds(path):
+    """Real duration of a wav file (0 if unreadable)."""
+    try:
+        import wave as _wave
+        with _wave.open(path) as w:
+            return w.getnframes() / float(w.getframerate())
+    except Exception:
+        return 0
+
+
+def silence_wav(seconds=1.2):
+    """Short silent wav — used to answer a call and let audio settle
+    before the greeting, so its first words aren't lost to call setup."""
+    tmp = tempfile.mkdtemp(prefix="agrisil_")
+    wav = os.path.join(tmp, "sil.wav")
+    subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i",
+                    "anullsrc=r=48000:cl=mono", "-t", str(seconds), wav],
+                   check=True, timeout=30, capture_output=True)
+    return wav
+
+
 def tts_wav(text, lang="en", repeats=REPEATS):
     """Text -> 48 kHz wav path (edge-tts neural, macOS `say` as fallback)."""
     text = " ... ".join([text] * max(1, repeats))
@@ -129,10 +158,26 @@ def tts_wav(text, lang="en", repeats=REPEATS):
     except Exception as e:
         print(f"[phone] edge-tts failed ({e}); trying macOS say", file=sys.stderr)
     if not made:
-        aiff = os.path.join(tmp, "say.aiff")
-        subprocess.run(["say", "-v", VOICE_FALLBACK.get(lang, VOICE_FALLBACK["en"]),
-                        "-o", aiff, text], check=True, timeout=60)
-        mp3 = aiff
+        if sys.platform == "darwin":
+            aiff = os.path.join(tmp, "say.aiff")
+            subprocess.run(["say", "-v", VOICE_FALLBACK.get(lang, VOICE_FALLBACK["en"]),
+                            "-o", aiff, text], check=True, timeout=60)
+            mp3 = aiff
+        elif sys.platform.startswith("win"):
+            # Windows SAPI via PowerShell writes a wav directly (no net needed).
+            raw = os.path.join(tmp, "sapi.wav")
+            ps = ("Add-Type -AssemblyName System.Speech; "
+                  "$s=New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+                  f"$s.SetOutputToWaveFile('{raw}'); "
+                  f"$s.Speak([Console]::In.ReadToEnd()); $s.Dispose()")
+            subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                           input=text, text=True, check=True, timeout=60)
+            mp3 = raw
+        else:
+            # Linux: espeak-ng if present.
+            aiff = os.path.join(tmp, "espeak.wav")
+            subprocess.run(["espeak-ng", "-w", aiff, text], check=True, timeout=60)
+            mp3 = aiff
     subprocess.run(["ffmpeg", "-y", "-i", mp3, "-ar", "48000", "-ac", "1", wav],
                    check=True, timeout=60, capture_output=True)
     return wav
@@ -149,6 +194,7 @@ class FarmPhone:
 
     LISTEN_SECONDS = 6
     MAX_ROUNDS = 8
+    LIVE_SECONDS = 30                 # how long "video" shows the field live
 
     def __init__(self, status_cb=None, command_cb=None, allowed=None):
         self.status_cb = status_cb
@@ -159,7 +205,9 @@ class FarmPhone:
         self.ready = threading.Event()
         self._outgoing = {}            # chat_id -> {"answered","done","ok","why","wav"}
         self._serving = {}             # chat_id -> {"task", "prompt_done"}
+        self._video_call = {}          # caller id -> incoming call had video on
         self._whisper = None
+        self._whisper_lock = threading.Lock()
 
     # Bias Whisper toward our command words — short single words over call
     # audio otherwise decode as random filler ("video" -> "this").
@@ -170,13 +218,20 @@ class FarmPhone:
         "te": "పొల ఆదేశాలు: వీడియో, స్టేటస్, ఫోటో, నీళ్లు పెట్టు, నీళ్లు ఆపు, లాక్ డౌన్, వీడ్కోలు.",
     }
 
+    def _ensure_whisper(self):
+        """Load the model once; stays in RAM for the life of the bridge."""
+        with self._whisper_lock:
+            if self._whisper is None:
+                import whisper
+                print("[phone] loading whisper model ...", flush=True)
+                self._whisper = whisper.load_model("base")
+                print("[phone] whisper ready", flush=True)
+        return self._whisper
+
     def _transcribe(self, wav, lang):
         """Blocking: speech in the recorded call audio -> text ('' if silent)."""
         try:
-            import whisper
-            if self._whisper is None:
-                print("[phone] loading whisper model ...", flush=True)
-                self._whisper = whisper.load_model("base")
+            self._ensure_whisper()
             code = {"en": "en", "hi": "hi", "te": "te", "te_en": "te"}.get(lang, "en")
             r = self._whisper.transcribe(
                 wav, language=code, fp16=False, temperature=0.0,
@@ -190,6 +245,9 @@ class FarmPhone:
     # ---- lifecycle ----
     def start(self, wait=30):
         threading.Thread(target=self._thread, daemon=True, name="farm-phone").start()
+        # warm the speech model now, not on the first caller's clock
+        threading.Thread(target=lambda: self._ensure_whisper() and None,
+                         daemon=True, name="whisper-preload").start()
         return self.ready.wait(wait)
 
     def _thread(self):
@@ -208,6 +266,18 @@ class FarmPhone:
         app = Client(SESSION, api_id=API_ID, api_hash=API_HASH, workdir=BASE_DIR)
         self.calls = PyTgCalls(app)
         calls = self.calls
+
+        # pytgcalls doesn't surface whether the caller pressed "video call";
+        # pyrogram's raw update does. Remember it so _serve can lead with video.
+        from pyrogram.handlers import RawUpdateHandler
+        from pyrogram.raw.types import UpdatePhoneCall, PhoneCallRequested
+
+        async def _raw_call(_, upd, users, chats):
+            if isinstance(upd, UpdatePhoneCall) \
+                    and isinstance(upd.phone_call, PhoneCallRequested):
+                self._video_call[upd.phone_call.admin_id] = \
+                    bool(getattr(upd.phone_call, "video", False))
+        app.add_handler(RawUpdateHandler(_raw_call), group=-99)
 
         @calls.on_update(cf.chat_update(ChatUpdate.Status.INCOMING_CALL))
         async def _incoming(_, u):
@@ -245,9 +315,12 @@ class FarmPhone:
                     st["answered"].set()
                     print("[phone] answered — restarting message", flush=True)
                     try:
+                        # let the call's audio transport come up first, or the
+                        # message plays into the void and the farmer hears nothing
+                        await asyncio.sleep(2.0)
                         await calls.play(u.chat_id, st["wav"])
                     except Exception as e:
-                        print(f"[phone] restart failed: {e}", file=sys.stderr)
+                        print(f"[phone] restart failed: {e!r}", file=sys.stderr)
                 return
             if isinstance(u, ChatUpdate):
                 ended = u.status & (ChatUpdate.Status.DISCARDED_CALL
@@ -275,6 +348,88 @@ class FarmPhone:
         await asyncio.Event().wait()                # serve forever
 
     # ---- incoming conversation ----
+    async def _live_video(self, chat_id, sv, pre=None):
+        """Stream the camera into the call LIVE for LIVE_SECONDS.
+        Returns True if a live stream actually played.
+        pre: an already-started (proc, port) from local_live_stream."""
+        from pytgcalls.types import MediaStream, VideoQuality
+
+        # Low-latency knobs for py-tgcalls' internal ffmpeg reader: without
+        # these it probes ~5 s of stream before decoding and buffers freely,
+        # which is exactly the start delay + ever-growing lag.
+        LOWLAT = ("--video ---start -fflags nobuffer -flags low_delay "
+                  "-probesize 300000 -analyzeduration 800000")
+
+        streams = []
+        # 1) ntgcalls native device capture (may be unsupported on macOS)
+        try:
+            from pytgcalls.media_devices import MediaDevices
+            cams = MediaDevices.camera_devices()
+            cam = next((d for d in cams if "c170" in d.name.lower()),
+                       cams[0] if cams else None)
+            if cam is not None:
+                streams.append(("device", MediaStream(
+                    cam, video_parameters=VideoQuality.SD_480p,
+                    audio_flags=MediaStream.Flags.IGNORE)))
+        except Exception as e:
+            print(f"[phone] camera device list failed: {e}", file=sys.stderr)
+        # 2) ffmpeg -> local UDP -> MediaStream (the reliable path)
+        proc = None
+        if streams and pre and pre[0]:
+            pre[0].kill()                   # device route won; drop the spare
+        if not streams:
+            if pre is not None:
+                proc, port = pre
+            else:
+                import mac_bridge  # already loaded inside the bridge process
+                proc, port = await self.loop.run_in_executor(
+                    None, mac_bridge.local_live_stream)
+            if proc:
+                # big receive buffer: keyframe bursts overflow the default
+                # UDP socket buffer and the lost packets decode as green junk
+                streams.append(("udp", MediaStream(
+                    f"udp://127.0.0.1:{port}?buffer_size=1048576",
+                    video_parameters=VideoQuality.SD_480p,
+                    audio_flags=MediaStream.Flags.IGNORE,
+                    ffmpeg_parameters=LOWLAT)))
+        played = False
+        try:
+            for label, stream in streams:
+                try:
+                    sv["prompt_done"].clear()
+                    await asyncio.wait_for(self.calls.play(chat_id, stream), 15)
+                    played = True
+                    print(f"[phone] live video via {label}", flush=True)
+                    break
+                except Exception as e:
+                    print(f"[phone] live {label} failed: {e!r}", file=sys.stderr)
+            if played:
+                try:
+                    await asyncio.wait_for(sv["prompt_done"].wait(),
+                                           self.LIVE_SECONDS)
+                except asyncio.TimeoutError:
+                    pass
+        finally:
+            if proc:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+        if played:
+            # replace the live stream with a breath of silence so the
+            # conversation loop can go back to listening cleanly
+            try:
+                sil = await self.loop.run_in_executor(None, silence_wav, 0.5)
+                sv["prompt_done"].clear()
+                await self.calls.play(chat_id, sil)
+                try:
+                    await asyncio.wait_for(sv["prompt_done"].wait(), 5)
+                except asyncio.TimeoutError:
+                    pass
+            except Exception:
+                pass
+        return played
+
     async def _serve(self, chat_id):
         """Answer the farmer's call: speak status, then listen/act in rounds."""
         import tempfile as _tf
@@ -282,15 +437,53 @@ class FarmPhone:
 
         async def say(text, lang, repeats=1):
             wav = await self.loop.run_in_executor(None, tts_wav, text, lang, repeats)
+            dur = wav_seconds(wav)
             sv["prompt_done"].clear()
-            await self.calls.play(chat_id, wav)     # first play() answers the call
+            t0 = self.loop.time()
+            await asyncio.wait_for(self.calls.play(chat_id, wav), 20)
             try:
-                await asyncio.wait_for(sv["prompt_done"].wait(), 90)
+                await asyncio.wait_for(sv["prompt_done"].wait(), max(90, dur + 10))
             except asyncio.TimeoutError:
                 pass
+            # A stray stream_end during call setup can fire early; never move
+            # on (record/next prompt) before the audio had time to finish.
+            left = dur - (self.loop.time() - t0)
+            if left > 0:
+                await asyncio.sleep(left)
 
         try:
             lang = (self.status_cb()[1] if self.status_cb else "en")
+            # Answer with ~1 s of silence first: the first play() answers the
+            # call while audio is still negotiating, which chopped the start
+            # of the greeting. Speak only once the transport is up.
+            # This play ANSWERS the call — if it fails the caller stays stuck
+            # on "requesting", so retry once and log the real exception.
+            sil = await self.loop.run_in_executor(None, silence_wav)
+            for attempt in (1, 2):
+                try:
+                    sv["prompt_done"].clear()
+                    await asyncio.wait_for(self.calls.play(chat_id, sil), 15)
+                    try:
+                        await asyncio.wait_for(sv["prompt_done"].wait(), 8)
+                    except asyncio.TimeoutError:
+                        pass
+                    break
+                except Exception as e:
+                    print(f"[phone] answer attempt {attempt} failed: {e!r}",
+                          file=sys.stderr)
+                    await asyncio.sleep(1.5)
+            # Farmer placed a VIDEO call: show the field immediately,
+            # no need to ask for it. Greeting follows the live window.
+            if self._video_call.pop(chat_id, False):
+                print("[phone] video call — going live right away", flush=True)
+                # start the camera while the intro line plays, so the
+                # spoken sentence hides the stream's startup time
+                import mac_bridge
+                spawn = self.loop.run_in_executor(
+                    None, mac_bridge.local_live_stream)
+                await say(prompt("live_intro", lang), lang)
+                if not await self._live_video(chat_id, sv, pre=await spawn):
+                    await say(prompt("no_camera", lang), lang)
             await say(prompt("greeting", lang), lang)
             for _ in range(self.MAX_ROUNDS):
                 if chat_id not in self._serving:
@@ -320,6 +513,9 @@ class FarmPhone:
                     reply, action = f"You said: {heard}", None
                 await say(reply, lang)
                 if action == "video":              # show the farm inside the call
+                    if await self._live_video(chat_id, sv):
+                        continue                   # streamed live; next round
+                    # live path unavailable — fall back to a recorded clip
                     clip = await self.loop.run_in_executor(None, capture_clip)
                     played = False
                     if clip:
@@ -351,7 +547,7 @@ class FarmPhone:
         except asyncio.CancelledError:
             pass
         except Exception as e:
-            print(f"[phone] conversation error: {e}", file=sys.stderr)
+            print(f"[phone] conversation error: {e!r}", file=sys.stderr)
         finally:
             self._serving.pop(chat_id, None)
             try:
