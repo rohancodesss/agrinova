@@ -223,6 +223,18 @@ body.exploremode #rts{opacity:1;visibility:visible;transform:translateY(0);trans
   <div class="stat li"><span class="n">≈67% <span class="pred">PREDICTED</span></span><span class="t">less water than habit watering</span></div>
 </section>
 
+<section class="scene" id="srec">
+  <div class="kicker li">Recognition</div>
+  <div class="gap-m li"></div>
+  <div class="big li">Award-winning.</div>
+  <div class="gap-s li"></div>
+  <div class="chiprow li">
+    <span class="chip">🥇 1st — CBSE Zonals</span><span class="chip">🏆 Kalam Award</span><span class="chip">Purple Umbrella Finalist</span>
+  </div>
+  <div class="gap-s li"></div>
+  <div class="sub li">Built by two Class VII students —<br>1st Place in Agriculture at the CBSE Zonals.</div>
+</section>
+
 <section class="scene" id="s6">
   <div class="phone li">
     <div class="pstatus">
@@ -379,7 +391,7 @@ home:{t:"Take it home",h:`
 };
 
 /* ---------------- loop scheduler ---------------- */
-const SCENES=[["s1",7000],["s2",7500],["s2b",8500],["s3",8000],["s4",8000],["s5",9000],["s6",9500],["s7",8000]];
+const SCENES=[["s1",7000],["s2",7500],["s2b",8500],["s3",8000],["s4",8000],["s5",9000],["srec",8500],["s6",9500],["s7",8000]];
 const dots=document.getElementById("dots");
 SCENES.forEach(()=>dots.appendChild(document.createElement("i")));
 let idx=-1,loopTimer=null,mode="loop";
@@ -574,6 +586,14 @@ if(!SHOT){
     if(m==="auto")return;                       // leave whatever is happening
     if(m==="show"){startLoop();return;}
     if(m==="explore"){closePanel();enterExplore();return;}
+    if(m.startsWith("scene:")){                 // pin one attract scene
+      closePanel(true);
+      document.body.classList.add("loopmode");document.body.classList.remove("exploremode");
+      clearTimeout(loopTimer);
+      const sc=document.getElementById(m.slice(6));
+      if(sc){document.querySelectorAll(".scene").forEach(x=>x.classList.remove("on"));sc.classList.add("on");}
+      return;
+    }
     if(m.startsWith("panel:")){
       const c=document.querySelector(`.card[data-p="${m.slice(6)}"]`);
       if(c){if(document.body.classList.contains("loopmode"))enterExplore();c.click();}
